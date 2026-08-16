@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Caja — Sistema de Cobros</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0d10;
+    --surface: #12161c;
+    --surface2: #181c24;
+    --border: #222830;
+    --accent: #f59e0b;
+    --accent2: #ef4444;
+    --green: #22c55e;
+    --blue: #60a5fa;
+    --text: #e8eaf0;
+    --muted: #5a6270;
+    --radius: 12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;min-height:100vh;display:flex;flex-direction:column}
+
+  header{background:var(--surface);border-bottom:1px solid var(--border);padding:0 28px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+  .logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:2px;color:var(--green)}
+  .header-right{display:flex;align-items:center;gap:20px}
+  .header-stat{text-align:right}
+  .header-stat-val{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:1px;color:var(--accent)}
+  .header-stat-label{font-size:10px;color:var(--muted);letter-spacing:1px}
+  .dot{width:8px;height:8px;border-radius:50%}
+  .dot.on{background:var(--green);box-shadow:0 0 8px var(--green);animation:p 2s infinite}
+  @keyframes p{0%,100%{opacity:1}50%{opacity:.3}}
+
+  .layout{display:grid;grid-template-columns:1fr 380px;height:calc(100vh - 60px);overflow:hidden}
+
+  .panel-cobros{overflow-y:auto;padding:24px;border-right:1px solid var(--border);scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  .panel-cobros::-webkit-scrollbar{width:4px}
+  .panel-cobros::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+
+  .panel-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;gap:8px;flex-wrap:wrap}
+  .panel-title{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:2px;color:var(--muted)}
+  .panel-actions{display:flex;gap:6px}
+  .btn-action{padding:6px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:11px;font-weight:500;cursor:pointer;transition:all .15s;white-space:nowrap}
+  .btn-action:hover{border-color:var(--accent);color:var(--accent)}
+  .btn-action.danger:hover{border-color:var(--accent2);color:var(--accent2)}
+
+  .cobro-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:14px;overflow:hidden;cursor:pointer;transition:all .2s;animation:fadeIn .3s ease}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  .cobro-card:hover{border-color:rgba(245,158,11,.4)}
+  .cobro-card.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+  .cobro-card.cobrada{opacity:.45}
+  .cobro-card.cobrada .cobro-badge{background:rgba(34,197,94,.15);color:var(--green)}
+  .cobro-header{padding:14px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+  .cobro-mesa{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;color:var(--accent)}
+  .cobro-badge{padding:4px 12px;background:rgba(245,158,11,.15);color:var(--accent);border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.5px}
+  .cobro-body{padding:12px 18px}
+  .cobro-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .cobro-mesero{font-size:12px;color:var(--muted)}
+  .cobro-total{font-family:'Bebas Neue',sans-serif;font-size:24px;color:var(--text);letter-spacing:1px}
+  .cobro-items-preview{font-size:12px;color:var(--muted)}
+  .cobro-time{font-size:11px;color:var(--muted);text-align:right;margin-top:6px}
+
+  .panel-detalle{display:flex;flex-direction:column;background:var(--surface2);overflow:hidden}
+  .detalle-empty{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted);text-align:center;padding:32px}
+  .detalle-empty-icon{font-size:60px;margin-bottom:16px;opacity:.3}
+  .detalle-empty-title{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;color:var(--muted)}
+  .detalle-content{display:none;flex-direction:column;height:100%}
+  .detalle-content.show{display:flex}
+
+  .recibo{flex:1;overflow-y:auto;padding:24px;scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+  .recibo-header{text-align:center;padding-bottom:20px;border-bottom:1px dashed var(--border);margin-bottom:20px}
+  .recibo-logo{width:80px;height:80px;object-fit:contain;margin:0 auto 10px;display:block}
+  .recibo-restaurante{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:3px;color:var(--accent)}
+  .recibo-sub{font-size:11px;color:var(--muted);margin-top:4px}
+  .recibo-mesa{font-family:'Bebas Neue',sans-serif;font-size:38px;color:var(--text);letter-spacing:2px;margin:16px 0 4px}
+  .recibo-datos{font-size:12px;color:var(--muted)}
+  .recibo-items{margin-bottom:16px}
+  .recibo-item{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:14px}
+  .recibo-item:last-child{border-bottom:none}
+  .recibo-item-nombre{flex:1}
+  .recibo-item-qty{color:var(--muted);font-size:12px;margin:0 12px}
+  .recibo-item-precio{font-weight:500}
+  .recibo-totales{border-top:1px dashed var(--border);padding-top:14px}
+  .recibo-linea{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:var(--muted)}
+  .recibo-linea.total{font-size:16px;font-weight:700;color:var(--text);padding-top:10px;border-top:1px solid var(--border);margin-top:6px}
+  .recibo-linea.total span:last-child{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--green)}
+
+  .pago-section{padding:16px 24px;border-top:1px solid var(--border);background:var(--surface)}
+  .pago-title{font-size:11px;color:var(--muted);letter-spacing:1.5px;margin-bottom:10px;text-transform:uppercase}
+  .pago-metodos{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+  .pago-btn{padding:10px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--muted);font-size:12px;font-weight:500;cursor:pointer;text-align:center;transition:all .15s}
+  .pago-btn.selected{border-color:var(--accent);color:var(--accent);background:rgba(245,158,11,.08)}
+  .pago-btn span{display:block;font-size:18px;margin-bottom:4px}
+  .btn-cobrar{width:100%;padding:15px;background:var(--green);color:#000;border:none;border-radius:var(--radius);font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;cursor:pointer;transition:all .2s;margin-bottom:8px}
+  .btn-cobrar:hover{box-shadow:0 0 20px rgba(34,197,94,.4)}
+  .btn-cobrar:disabled{opacity:.4;cursor:not-allowed;box-shadow:none}
+  .btn-imprimir{width:100%;padding:11px;background:transparent;border:1px solid var(--border);border-radius:var(--radius);color:var(--muted);font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;cursor:pointer;transition:all .15s}
+  .btn-imprimir:hover{border-color:var(--blue);color:var(--blue)}
+
+  .notif{position:fixed;top:70px;right:24px;background:var(--green);color:#000;padding:12px 20px;border-radius:var(--radius);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1.5px;z-index:100;transform:translateX(200%);transition:transform .3s cubic-bezier(0.34,1.56,0.64,1);box-shadow:0 8px 32px rgba(34,197,94,.3)}
+  .notif.show{transform:translateX(0)}
+
+  .config-overlay{position:fixed;inset:0;background:var(--bg);z-index:300;display:flex;align-items:center;justify-content:center;padding:20px}
+  .config-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:32px 28px;width:100%;max-width:480px}
+  .config-title{font-family:'Bebas Neue',sans-serif;font-size:28px;letter-spacing:2px;color:var(--green);margin-bottom:8px}
+  .config-sub{font-size:14px;color:var(--muted);margin-bottom:24px;line-height:1.6}
+  .config-input{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;width:100%;margin-bottom:16px;outline:none;transition:border-color .2s}
+  .config-input:focus{border-color:var(--green)}
+  .btn-config{width:100%;padding:16px;border-radius:var(--radius);border:none;font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;cursor:pointer;background:var(--green);color:#000}
+  .empty-state-cobros{text-align:center;padding:48px 20px;color:var(--muted)}
+  .empty-state-cobros .ei{font-size:52px;margin-bottom:14px;opacity:.3}
+
+  /* MODAL GENÉRICO */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:none;align-items:center;justify-content:center;backdrop-filter:blur(4px);padding:20px}
+  .modal-overlay.open{display:flex}
+  .modal-box{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px 24px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;animation:fadeIn .2s ease}
+  .modal-title{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;margin-bottom:6px}
+  .modal-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+  .modal-close{position:absolute;top:16px;right:20px;background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer}
+  .modal-row{display:flex;justify-content:space-between;padding:8px 0;font-size:14px;border-bottom:1px solid var(--border)}
+  .modal-row:last-child{border-bottom:none}
+  .modal-row-label{color:var(--muted)}
+  .modal-row-val{font-weight:600}
+  .modal-total{display:flex;justify-content:space-between;padding:14px 0 0;margin-top:8px;font-weight:700;font-size:16px;border-top:2px solid var(--border)}
+  .modal-total span:last-child{font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--green)}
+  .modal-section{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1.5px;color:var(--muted);margin:16px 0 8px}
+  .modal-btn{width:100%;padding:14px;border-radius:var(--radius);border:none;font-family:'Bebas Neue',sans-serif;font-size:18px;letter-spacing:2px;cursor:pointer;margin-top:12px}
+  .modal-btn-green{background:var(--green);color:#000}
+  .modal-btn-red{background:var(--accent2);color:#fff}
+  .modal-btn-outline{background:transparent;border:1px solid var(--border);color:var(--muted);font-size:14px}
+  .modal-btn:disabled{opacity:.4;cursor:not-allowed}
+
+  /* PASSWORD INPUT */
+  .pass-section{margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+  .pass-label{font-size:12px;color:var(--muted);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+  .pass-input{background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 14px;color:var(--text);font-size:14px;width:100%;outline:none;margin-bottom:4px}
+  .pass-input:focus{border-color:var(--accent)}
+  .pass-error{font-size:12px;color:var(--accent2);display:none;margin-bottom:8px}
+
+  /* HISTORIAL TABLE */
+  .hist-filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .hist-filter-btn{padding:6px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;color:var(--muted);font-size:12px;cursor:pointer;transition:all .15s}
+  .hist-filter-btn.active{background:var(--accent);color:#000;border-color:var(--accent)}
+  .hist-table{width:100%;font-size:13px;border-collapse:collapse}
+  .hist-table th{text-align:left;padding:8px 10px;font-size:11px;color:var(--muted);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--border)}
+  .hist-table td{padding:8px 10px;border-bottom:1px solid var(--border)}
+  .hist-table tr:hover td{background:rgba(255,255,255,.02)}
+  .hist-empty{text-align:center;padding:32px;color:var(--muted);font-size:14px}
+
+  @media print{
+    body *{visibility:hidden}
+    .recibo,.recibo *{visibility:visible}
+    .recibo{position:fixed;top:0;left:0;width:80mm;background:white;color:black;padding:10mm}
+    .recibo-logo{filter:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div class="config-overlay" id="authOverlay">
+  <div class="config-box">
+    <div class="config-title">🔒 ACCESO RESTRINGIDO</div>
+    <div class="config-sub">Ingresa la contraseña para acceder al módulo de Caja.</div>
+    <input class="config-input" id="authInput" placeholder="Contraseña" type="password" onkeydown="if(event.key==='Enter') verificarAuth()">
+    <div id="authError" style="color:#ef4444;font-size:12px;margin-bottom:12px;display:none">Contraseña incorrecta</div>
+    <button class="btn-config" onclick="verificarAuth()">ENTRAR</button>
+  </div>
+</div>
+
+<!-- CONFIG -->
+<div class="config-overlay" id="configOverlay" style="display:none">
+  <div class="config-box">
+    <div class="config-title">🧾 MÓDULO CAJA</div>
+    <div class="config-sub">Ingresa la misma URL de Firebase para recibir las cuentas de los meseros.</div>
+    <input class="config-input" id="firebaseUrl" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com" type="url">
+    <button class="btn-config" onclick="guardarConfig()">CONECTAR CAJA</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">🧾 CAJA</div>
+  <div class="header-right">
+    <div class="header-stat">
+      <div class="header-stat-val" id="totalHoy">$0</div>
+      <div class="header-stat-label">Cobrado Hoy</div>
+    </div>
+    <div class="header-stat">
+      <div class="header-stat-val" id="countHoy" style="color:var(--green)">0</div>
+      <div class="header-stat-label">Mesas Atendidas</div>
+    </div>
+    <div class="dot" id="dot"></div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- COLA -->
+  <div class="panel-cobros">
+    <div class="panel-header">
+      <div class="panel-title">CUENTAS POR COBRAR</div>
+      <div class="panel-actions">
+        <button class="btn-action" onclick="abrirCorte()">📊 Corte de Caja</button>
+        <button class="btn-action" onclick="abrirHistorial()">📋 Historial</button>
+        <button class="btn-action" onclick="abrirTopVentas()">🏆 Top Ventas</button>
+        <button class="btn-action danger" onclick="abrirLimpiar()">🗑 Limpiar</button>
+      </div>
+    </div>
+    <div id="colaContainer">
+      <div class="empty-state-cobros">
+        <div class="ei">💸</div>
+        <div>Sin cuentas pendientes</div>
+        <div style="font-size:12px;margin-top:6px">Los meseros enviarán las cuentas desde su tablet</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DETALLE -->
+  <div class="panel-detalle">
+    <div class="detalle-empty" id="detalleEmpty">
+      <div class="detalle-empty-icon">🧾</div>
+      <div class="detalle-empty-title">SELECCIONA UNA CUENTA</div>
+      <div style="font-size:13px;margin-top:8px">Haz clic en una cuenta para ver el detalle</div>
+    </div>
+    <div class="detalle-content" id="detalleContent">
+      <div class="recibo" id="reciboContent"></div>
+      <div class="pago-section">
+        <div class="pago-title">Forma de Pago</div>
+        <div class="pago-metodos">
+          <div class="pago-btn" onclick="selectPago('efectivo')"><span>💵</span>Efectivo</div>
+          <div class="pago-btn" onclick="selectPago('tarjeta')"><span>💳</span>Tarjeta</div>
+          <div class="pago-btn" onclick="selectPago('transferencia')"><span>📱</span>Transfer.</div>
+        </div>
+        <div id="efectivoInput" style="display:none;margin-bottom:12px">
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">Monto recibido</div>
+          <input id="montoRecibido" type="number" placeholder="$0" min="0" step="1"
+            style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;color:var(--text);font-size:18px;width:100%;outline:none;text-align:center;font-family:'Bebas Neue',sans-serif"
+            oninput="calcularCambio()" onkeydown="if(event.key==='Enter') cobrar()">
+          <div id="cambioDisplay" style="margin-top:8px;text-align:center;font-family:'Bebas Neue',sans-serif;font-size:22px;display:none">
+            CAMBIO: <span id="cambioMonto" style="color:var(--green)">$0</span>
+          </div>
+        </div>
+        <button class="btn-cobrar" id="btnCobrar" onclick="cobrar()" disabled>COBRAR</button>
+        <button class="btn-imprimir" onclick="imprimirRecibo()">🖨 IMPRIMIR RECIBO</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CORTE DE CAJA -->
+<div class="modal-overlay" id="modalCorte">
+  <div class="modal-box">
+    <div class="modal-title" style="color:var(--green)">📊 CORTE DE CAJA</div>
+    <div class="modal-sub" id="corteFecha"></div>
+    <div id="corteContenido"></div>
+    <div class="pass-section">
+      <div class="pass-label">🔒 Confirma con contraseña para generar el corte</div>
+      <input class="pass-input" id="cortePass" type="password" placeholder="Contraseña" onkeydown="if(event.key==='Enter') ejecutarCorte()">
+      <div class="pass-error" id="cortePassError">Contraseña incorrecta</div>
+    </div>
+    <button class="modal-btn modal-btn-green" onclick="ejecutarCorte()">📥 EXPORTAR CORTE</button>
+    <button class="modal-btn modal-btn-outline" onclick="cerrarModal('modalCorte')">CERRAR</button>
+  </div>
+</div>
+
+<!-- MODAL LIMPIAR HISTORIAL -->
+<div class="modal-overlay" id="modalLimpiar">
+  <div class="modal-box">
+    <div class="modal-title" style="color:var(--accent2)">🗑 LIMPIAR HISTORIAL</div>
+    <div class="modal-sub">Esto eliminará las cuentas cobradas de la pantalla principal. Las cuentas pendientes NO se eliminarán.<br><br>El historial completo seguirá disponible en la sección de Historial.</div>
+    <div id="limpiarInfo"></div>
+    <div class="pass-section">
+      <div class="pass-label">🔒 Confirma con contraseña para limpiar</div>
+      <input class="pass-input" id="limpiarPass" type="password" placeholder="Contraseña" onkeydown="if(event.key==='Enter') ejecutarLimpiar()">
+      <div class="pass-error" id="limpiarPassError">Contraseña incorrecta</div>
+    </div>
+    <button class="modal-btn modal-btn-red" onclick="ejecutarLimpiar()">LIMPIAR COBRADAS</button>
+    <button class="modal-btn modal-btn-outline" onclick="cerrarModal('modalLimpiar')">CANCELAR</button>
+  </div>
+</div>
+
+<!-- MODAL HISTORIAL COMPLETO -->
+<div class="modal-overlay" id="modalHistorial">
+  <div class="modal-box" style="max-width:800px">
+    <div class="modal-title" style="color:var(--blue)">📋 HISTORIAL COMPLETO</div>
+    <div class="modal-sub">Todas las ventas registradas desde el primer día.</div>
+    <div class="hist-filters" id="histFiltros"></div>
+    <div id="histContenido"></div>
+    <div style="display:flex;gap:8px;margin-top:16px">
+      <button class="modal-btn modal-btn-green" style="flex:1" onclick="exportarHistorial()">📥 EXPORTAR TODO</button>
+      <button class="modal-btn modal-btn-outline" style="flex:1" onclick="cerrarModal('modalHistorial')">CERRAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL TOP VENTAS -->
+<div class="modal-overlay" id="modalTopVentas">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-title" style="color:var(--accent)">🏆 PLATILLOS MÁS VENDIDOS</div>
+    <div class="modal-sub">Ranking basado en todas las ventas registradas.</div>
+    <div id="topVentasContenido"></div>
+    <button class="modal-btn modal-btn-outline" onclick="cerrarModal('modalTopVentas')">CERRAR</button>
+  </div>
+</div>
+
+<div class="notif" id="notif">💰 NUEVA CUENTA</div>
+
+<script>
+function verificarAuth(){
+  var input=document.getElementById('authInput').value;
+  if(input==='Aure26'){
+    sessionStorage.setItem('auth_caja','1');
+    document.getElementById('authOverlay').style.display='none';
+    window.__authReady=true;
+    if(window.__initFirebase) window.__initFirebase();
+  } else {
+    document.getElementById('authError').style.display='block';
+    document.getElementById('authInput').value='';
+    document.getElementById('authInput').focus();
+  }
+}
+if(sessionStorage.getItem('auth_caja')==='1'){
+  document.getElementById('authOverlay').style.display='none';
+  window.__authReady=true;
+} else {
+  document.getElementById('authOverlay').style.display='flex';
+  window.__authReady=false;
+  setTimeout(function(){document.getElementById('authInput').focus()},100);
+}
+</script>
+
+<script type="module">
+import { initializeApp } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm';
+import { getDatabase, ref, onValue, update, remove, set, push } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/database/+esm';
+
+let db=null;
+let cuentas={};
+let cuentaSeleccionada=null;
+let pagoMetodo=null;
+let totalCobradoHoy=0;
+let mesasHoy=0;
+let primeraVez=true;
+
+function toArr(v){
+  if(!v) return [];
+  if(Array.isArray(v)) return v;
+  if(typeof v==='object') return Object.values(v);
+  return [];
+}
+
+window.guardarConfig=function(){
+  var url=document.getElementById('firebaseUrl').value.trim();
+  if(!url.includes('firebaseio.com')){alert('URL inválida');return;}
+  localStorage.setItem('firebaseUrlCaja',url);
+  document.getElementById('configOverlay').style.display='none';
+  initFirebase();
+}
+
+function initFirebase(){
+  var url=localStorage.getItem('firebaseUrlCaja');
+  if(!url){document.getElementById('configOverlay').style.display='flex';return;}
+  document.getElementById('configOverlay').style.display='none';
+  var app=initializeApp({databaseURL:url},'caja');
+  db=getDatabase(app);
+  onValue(ref(db,'.info/connected'),function(snap){
+    document.getElementById('dot').className=snap.val()?'dot on':'dot';
+  });
+  escucharCuentas();
+  cargarResumenDiario();
+}
+
+function escucharCuentas(){
+  onValue(ref(db,'caja'),function(snap){
+    cuentas={};
+    snap.forEach(function(child){cuentas[child.key]=child.val();});
+    primeraVez=false;
+    renderCola();
+    if(cuentaSeleccionada && cuentas[cuentaSeleccionada]){
+      renderDetalle(cuentaSeleccionada);
+    }
+  });
+}
+
+function renderCola(){
+  var container=document.getElementById('colaContainer');
+  var pendientes=Object.values(cuentas).filter(function(c){return c.estado==='pendiente';}).sort(function(a,b){return a.timestamp-b.timestamp;});
+  var cobradas=Object.values(cuentas).filter(function(c){return c.estado==='cobrada';}).sort(function(a,b){return b.timestamp-a.timestamp;}).slice(0,5);
+  var todas=[].concat(pendientes,cobradas);
+
+  if(todas.length===0){
+    container.innerHTML='<div class="empty-state-cobros"><div class="ei">💸</div><div>Sin cuentas pendientes</div></div>';
+    return;
+  }
+
+  var html='';
+  todas.forEach(function(cuenta){
+    var items=toArr(cuenta.items);
+    var sel=cuentaSeleccionada===cuenta.ordenId?'selected':'';
+    var cobr=cuenta.estado==='cobrada'?'cobrada':'';
+    var badge=cuenta.estado==='cobrada'?'✓ COBRADA':'PENDIENTE';
+    var preview=items.slice(0,3).map(function(i){return i.nombre||'Producto';}).join(', ');
+    var extra=items.length>3?' +'+(items.length-3):'';
+    var pago=cuenta.metodoPago?' · '+cuenta.metodoPago:'';
+
+    html+='<div class="cobro-card '+sel+' '+cobr+'" onclick="seleccionarCuenta(\''+cuenta.ordenId+'\')">';
+    html+='<div class="cobro-header"><span class="cobro-mesa">MESA '+cuenta.mesa+'</span>';
+    html+='<span class="cobro-badge">'+badge+'</span></div>';
+    html+='<div class="cobro-body"><div class="cobro-info">';
+    html+='<span class="cobro-mesero">👤 '+(cuenta.mesero||'')+'</span>';
+    html+='<span class="cobro-total">$'+(cuenta.total||0)+'</span></div>';
+    html+='<div class="cobro-items-preview">'+preview+extra+'</div>';
+    html+='<div class="cobro-time">'+formatTime(cuenta.timestamp)+pago+'</div>';
+    html+='</div></div>';
+  });
+  container.innerHTML=html;
+}
+
+window.seleccionarCuenta=function(id){
+  cuentaSeleccionada=id;
+  pagoMetodo=null;
+  document.getElementById('efectivoInput').style.display='none';
+  document.getElementById('cambioDisplay').style.display='none';
+  renderCola();
+  renderDetalle(id);
+  actualizarBtnCobrar();
+}
+
+function renderDetalle(id){
+  var c=cuentas[id];
+  if(!c) return;
+  document.getElementById('detalleEmpty').style.display='none';
+  document.getElementById('detalleContent').classList.add('show');
+  var items=toArr(c.items);
+  var recibo='<div class="recibo-header">';
+  recibo+='<img class="recibo-logo" src="Logo.png" alt="Quinta Aure">';
+  recibo+='<div class="recibo-restaurante">QUINTA AURE</div>';
+  recibo+='<div class="recibo-sub">Sistema de Punto de Venta</div>';
+  recibo+='<div class="recibo-mesa">MESA '+c.mesa+'</div>';
+  recibo+='<div class="recibo-datos">'+formatTime(c.timestamp)+'<br>Folio: '+id.slice(-8).toUpperCase()+'</div>';
+  recibo+='</div><div class="recibo-items">';
+  items.forEach(function(i){
+    recibo+='<div class="recibo-item">';
+    recibo+='<span class="recibo-item-nombre">'+(i.emoji||'')+' '+(i.nombre||'Producto')+'</span>';
+    recibo+='<span class="recibo-item-qty">x'+(i.qty||1)+'</span>';
+    recibo+='<span class="recibo-item-precio">$'+((i.precio||0)*(i.qty||1))+'</span>';
+    recibo+='</div>';
+  });
+  recibo+='</div><div class="recibo-totales">';
+  recibo+='<div class="recibo-linea"><span>Subtotal</span><span>$'+(c.subtotal||0)+'</span></div>';
+  if(c.propina){
+    recibo+='<div class="recibo-linea"><span>Propina</span><span>$'+c.propina+'</span></div>';
+  }
+  recibo+='<div class="recibo-linea total"><span>TOTAL</span><span>$'+(c.total||0)+'</span></div>';
+  recibo+='</div>';
+  if(c.estado==='cobrada'){
+    recibo+='<div style="text-align:center;margin-top:20px;padding:12px;background:rgba(34,197,94,.08);border-radius:8px;border:1px solid rgba(34,197,94,.2)">';
+    recibo+='<div style="font-size:28px">✅</div>';
+    recibo+='<div style="font-family:Bebas Neue,sans-serif;font-size:18px;color:var(--green);letter-spacing:2px;margin-top:6px">COBRADA</div>';
+    recibo+='<div style="font-size:12px;color:var(--muted);margin-top:4px">'+(c.metodoPago||'')+' · '+formatTime(c.cobradaEn||c.timestamp)+'</div>';
+    recibo+='</div>';
+  }
+  document.getElementById('reciboContent').innerHTML=recibo;
+  document.querySelectorAll('.pago-btn').forEach(function(b){b.classList.remove('selected');});
+  var btn=document.getElementById('btnCobrar');
+  if(c.estado==='cobrada'){
+    btn.disabled=true;btn.textContent='✓ YA COBRADA';btn.style.background='var(--muted)';
+  } else {
+    btn.disabled=!pagoMetodo;btn.textContent='COBRAR';btn.style.background='var(--green)';
+  }
+}
+
+window.selectPago=function(metodo){
+  if(cuentas[cuentaSeleccionada]&&cuentas[cuentaSeleccionada].estado==='cobrada') return;
+  pagoMetodo=metodo;
+  document.querySelectorAll('.pago-btn').forEach(function(b){b.classList.remove('selected');});
+  event.currentTarget.classList.add('selected');
+  actualizarBtnCobrar();
+}
+
+function actualizarBtnCobrar(){
+  var btn=document.getElementById('btnCobrar');
+  if(!cuentaSeleccionada){btn.disabled=true;return;}
+  var c=cuentas[cuentaSeleccionada];
+  if(!c||c.estado==='cobrada'){btn.disabled=true;return;}
+  btn.disabled=!pagoMetodo;
+}
+
+window.cobrar=async function(){
+  if(!cuentaSeleccionada||!pagoMetodo) return;
+  var c=cuentas[cuentaSeleccionada];
+  if(!c||c.estado==='cobrada') return;
+  try{
+    await update(ref(db,'caja/'+cuentaSeleccionada),{estado:'cobrada',metodoPago:pagoMetodo,cobradaEn:Date.now()});
+  }catch(e){return;}
+  try{
+    var ids=toArr(c.ordenIds);
+    var srcs=toArr(c.ordenSrcs);
+    if(ids.length>0){
+      for(var i=0;i<ids.length;i++){
+        var nodo=srcs[i]||'ordenes';
+        await remove(ref(db,nodo+'/'+ids[i])).catch(function(){});
+      }
+    } else if(c.ordenId){
+      await remove(ref(db,'ordenes/'+c.ordenId)).catch(function(){});
+      await remove(ref(db,'bebidas/'+c.ordenId)).catch(function(){});
+    }
+  }catch(e){}
+  totalCobradoHoy+=(c.total||0);
+  mesasHoy++;
+  actualizarResumen();
+}
+
+function cargarResumenDiario(){
+  var hoy=new Date().toDateString();
+  onValue(ref(db,'caja'),function(snap){
+    totalCobradoHoy=0;mesasHoy=0;
+    snap.forEach(function(child){
+      var c=child.val();
+      if(c.estado==='cobrada'){
+        var fecha=new Date(c.cobradaEn||c.timestamp).toDateString();
+        if(fecha===hoy){totalCobradoHoy+=(c.total||0);mesasHoy++;}
+      }
+    });
+    actualizarResumen();
+  });
+}
+
+function actualizarResumen(){
+  document.getElementById('totalHoy').textContent='$'+totalCobradoHoy;
+  document.getElementById('countHoy').textContent=mesasHoy;
+}
+
+window.imprimirRecibo=function(){window.print();}
+
+function formatTime(ts){
+  if(!ts) return '';
+  return new Date(ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+}
+function formatDate(ts){
+  if(!ts) return '';
+  return new Date(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+}
+function formatDateTime(ts){
+  if(!ts) return '';
+  return formatDate(ts)+' '+formatTime(ts);
+}
+
+// ─── CERRAR MODALES ──────────────────────────────────────
+window.cerrarModal=function(id){
+  document.getElementById(id).classList.remove('open');
+}
+
+// ─── CORTE DE CAJA ───────────────────────────────────────
+window.abrirCorte=function(){
+  var hoy=new Date();
+  var hoyStr=hoy.toDateString();
+  var cobradas=Object.values(cuentas).filter(function(c){
+    return c.estado==='cobrada' && new Date(c.cobradaEn||c.timestamp).toDateString()===hoyStr;
+  });
+
+  var totalEfectivo=0,totalTarjeta=0,totalTransfer=0,totalPropinas=0,totalGeneral=0;
+  cobradas.forEach(function(c){
+    var t=c.total||0;
+    totalGeneral+=t;
+    totalPropinas+=(c.propina||0);
+    if(c.metodoPago==='efectivo') totalEfectivo+=t;
+    else if(c.metodoPago==='tarjeta') totalTarjeta+=t;
+    else if(c.metodoPago==='transferencia') totalTransfer+=t;
+  });
+
+  document.getElementById('corteFecha').textContent=hoy.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  var html='';
+  html+='<div class="modal-section">RESUMEN DEL DÍA</div>';
+  html+='<div class="modal-row"><span class="modal-row-label">Cuentas cobradas</span><span class="modal-row-val">'+cobradas.length+'</span></div>';
+  html+='<div class="modal-row"><span class="modal-row-label">Propinas incluidas</span><span class="modal-row-val">$'+totalPropinas+'</span></div>';
+  html+='<div class="modal-section">DESGLOSE POR MÉTODO</div>';
+  html+='<div class="modal-row"><span class="modal-row-label">💵 Efectivo</span><span class="modal-row-val">$'+totalEfectivo+'</span></div>';
+  html+='<div class="modal-row"><span class="modal-row-label">💳 Tarjeta</span><span class="modal-row-val">$'+totalTarjeta+'</span></div>';
+  html+='<div class="modal-row"><span class="modal-row-label">📱 Transferencia</span><span class="modal-row-val">$'+totalTransfer+'</span></div>';
+  html+='<div class="modal-total"><span>TOTAL DEL DÍA</span><span>$'+totalGeneral+'</span></div>';
+
+  document.getElementById('corteContenido').innerHTML=html;
+  document.getElementById('cortePass').value='';
+  document.getElementById('cortePassError').style.display='none';
+  document.getElementById('modalCorte').classList.add('open');
+  setTimeout(function(){document.getElementById('cortePass').focus();},100);
+}
+
+window.ejecutarCorte=function(){
+  var pass=document.getElementById('cortePass').value;
+  if(pass!=='Aure26'){
+    document.getElementById('cortePassError').style.display='block';
+    document.getElementById('cortePass').value='';
+    document.getElementById('cortePass').focus();
+    return;
+  }
+  document.getElementById('cortePassError').style.display='none';
+
+  var hoy=new Date();
+  var hoyStr=hoy.toDateString();
+  var cobradas=Object.values(cuentas).filter(function(c){
+    return c.estado==='cobrada' && new Date(c.cobradaEn||c.timestamp).toDateString()===hoyStr;
+  }).sort(function(a,b){return a.timestamp-b.timestamp;});
+
+  var totalEfectivo=0,totalTarjeta=0,totalTransfer=0,totalPropinas=0,totalGeneral=0;
+  cobradas.forEach(function(c){
+    var t=c.total||0;
+    totalGeneral+=t;
+    totalPropinas+=(c.propina||0);
+    if(c.metodoPago==='efectivo') totalEfectivo+=t;
+    else if(c.metodoPago==='tarjeta') totalTarjeta+=t;
+    else if(c.metodoPago==='transferencia') totalTransfer+=t;
+  });
+
+  var texto='CORTE DE CAJA — QUINTA AURE\n';
+  texto+=hoy.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'\n';
+  texto+='='.repeat(45)+'\n\n';
+  texto+='RESUMEN\n';
+  texto+='-'.repeat(30)+'\n';
+  texto+='Cuentas cobradas: '+cobradas.length+'\n';
+  texto+='Propinas: $'+totalPropinas+'\n\n';
+  texto+='DESGLOSE POR MÉTODO\n';
+  texto+='-'.repeat(30)+'\n';
+  texto+='Efectivo:      $'+totalEfectivo+'\n';
+  texto+='Tarjeta:       $'+totalTarjeta+'\n';
+  texto+='Transferencia: $'+totalTransfer+'\n\n';
+  texto+='TOTAL DEL DÍA: $'+totalGeneral+'\n';
+  texto+='='.repeat(45)+'\n\n';
+  texto+='DETALLE DE CUENTAS\n';
+  texto+='-'.repeat(30)+'\n';
+  cobradas.forEach(function(c,idx){
+    texto+=(idx+1)+'. Mesa '+c.mesa+' | '+(c.mesero||'-')+' | $'+(c.total||0)+' | '+(c.metodoPago||'-')+' | '+formatTime(c.cobradaEn||c.timestamp)+'\n';
+  });
+
+  var blob=new Blob([texto],{type:'text/plain;charset=utf-8'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;
+  a.download='corte_caja_'+hoy.toISOString().slice(0,10)+'.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  cerrarModal('modalCorte');
+}
+
+// ─── LIMPIAR HISTORIAL (solo pantalla) ───────────────────
+window.abrirLimpiar=function(){
+  var cobradas=Object.values(cuentas).filter(function(c){return c.estado==='cobrada';});
+  var total=cobradas.reduce(function(s,c){return s+(c.total||0);},0);
+  var html='<div class="modal-row"><span class="modal-row-label">Cuentas cobradas a eliminar</span><span class="modal-row-val">'+cobradas.length+'</span></div>';
+  html+='<div class="modal-row"><span class="modal-row-label">Total en cobradas</span><span class="modal-row-val">$'+total+'</span></div>';
+  document.getElementById('limpiarInfo').innerHTML=html;
+  document.getElementById('limpiarPass').value='';
+  document.getElementById('limpiarPassError').style.display='none';
+  document.getElementById('modalLimpiar').classList.add('open');
+  setTimeout(function(){document.getElementById('limpiarPass').focus();},100);
+}
+
+window.ejecutarLimpiar=async function(){
+  var pass=document.getElementById('limpiarPass').value;
+  if(pass!=='Aure26'){
+    document.getElementById('limpiarPassError').style.display='block';
+    document.getElementById('limpiarPass').value='';
+    document.getElementById('limpiarPass').focus();
+    return;
+  }
+  document.getElementById('limpiarPassError').style.display='none';
+
+  // Guardar en historial antes de borrar
+  var cobradas=Object.entries(cuentas).filter(function(e){return e[1].estado==='cobrada';});
+  for(var i=0;i<cobradas.length;i++){
+    var key=cobradas[i][0];
+    var cuenta=cobradas[i][1];
+    // Mover a nodo historial
+    await set(ref(db,'historial/'+key),cuenta).catch(function(){});
+    // Borrar de caja
+    await remove(ref(db,'caja/'+key)).catch(function(){});
+  }
+
+  cuentaSeleccionada=null;
+  document.getElementById('detalleEmpty').style.display='flex';
+  document.getElementById('detalleContent').classList.remove('show');
+  cerrarModal('modalLimpiar');
+}
+
+// ─── HISTORIAL COMPLETO ──────────────────────────────────
+var histFiltro='todos';
+
+window.abrirHistorial=function(){
+  histFiltro='todos';
+  renderHistorial();
+  document.getElementById('modalHistorial').classList.add('open');
+}
+
+function obtenerTodoHistorial(callback){
+  // Combinar historial archivado + cobradas actuales en caja
+  onValue(ref(db,'historial'),function(snapH){
+    onValue(ref(db,'caja'),function(snapC){
+      var todas={};
+      if(snapH.exists()){
+        snapH.forEach(function(ch){var v=ch.val();if(v.estado==='cobrada') todas[ch.key]=v;});
+      }
+      snapC.forEach(function(ch){var v=ch.val();if(v.estado==='cobrada') todas[ch.key]=v;});
+      callback(todas);
+    },{onlyOnce:true});
+  },{onlyOnce:true});
+}
+
+function renderHistorial(){
+  obtenerTodoHistorial(function(todas){
+    var lista=Object.values(todas).sort(function(a,b){return(b.cobradaEn||b.timestamp)-(a.cobradaEn||a.timestamp);});
+
+    // Obtener fechas únicas para filtros
+    var fechas={};
+    lista.forEach(function(c){
+      var d=new Date(c.cobradaEn||c.timestamp).toDateString();
+      if(!fechas[d]) fechas[d]=0;
+      fechas[d]++;
+    });
+    var fechaKeys=Object.keys(fechas).sort(function(a,b){return new Date(b)-new Date(a);});
+
+    // Filtros
+    var filtrosHtml='<button class="hist-filter-btn '+(histFiltro==='todos'?'active':'')+'" onclick="filtrarHist(\'todos\')">Todos ('+lista.length+')</button>';
+    fechaKeys.forEach(function(f){
+      var label=new Date(f).toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
+      filtrosHtml+='<button class="hist-filter-btn '+(histFiltro===f?'active':'')+'" onclick="filtrarHist(\''+f+'\')">'+label+' ('+fechas[f]+')</button>';
+    });
+    document.getElementById('histFiltros').innerHTML=filtrosHtml;
+
+    // Filtrar
+    var filtrada=lista;
+    if(histFiltro!=='todos'){
+      filtrada=lista.filter(function(c){return new Date(c.cobradaEn||c.timestamp).toDateString()===histFiltro;});
+    }
+
+    if(filtrada.length===0){
+      document.getElementById('histContenido').innerHTML='<div class="hist-empty">📋 Sin registros</div>';
+      return;
+    }
+
+    var totalFiltrado=filtrada.reduce(function(s,c){return s+(c.total||0);},0);
+
+    var html='<div style="margin-bottom:12px;font-size:13px;color:var(--muted)">'+filtrada.length+' ventas · Total: <span style="color:var(--green);font-weight:600">$'+totalFiltrado+'</span></div>';
+    html+='<table class="hist-table"><thead><tr><th>Fecha</th><th>Mesa</th><th>Mesero</th><th>Método</th><th style="text-align:right">Total</th></tr></thead><tbody>';
+    filtrada.forEach(function(c){
+      html+='<tr>';
+      html+='<td>'+formatDateTime(c.cobradaEn||c.timestamp)+'</td>';
+      html+='<td>'+c.mesa+'</td>';
+      html+='<td>'+(c.mesero||'-')+'</td>';
+      html+='<td>'+(c.metodoPago||'-')+'</td>';
+      html+='<td style="text-align:right;font-weight:600">$'+(c.total||0)+'</td>';
+      html+='</tr>';
+    });
+    html+='</tbody></table>';
+    document.getElementById('histContenido').innerHTML=html;
+  });
+}
+
+window.filtrarHist=function(f){
+  histFiltro=f;
+  renderHistorial();
+}
+
+window.exportarHistorial=function(){
+  obtenerTodoHistorial(function(todas){
+    var lista=Object.values(todas).sort(function(a,b){return(b.cobradaEn||b.timestamp)-(a.cobradaEn||a.timestamp);});
+    var total=lista.reduce(function(s,c){return s+(c.total||0);},0);
+
+    var texto='HISTORIAL COMPLETO — QUINTA AURE\n';
+    texto+='Generado: '+new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'\n';
+    texto+='='.repeat(50)+'\n\n';
+    texto+='Total de ventas: '+lista.length+'\n';
+    texto+='Total general: $'+total+'\n\n';
+    texto+='DETALLE\n';
+    texto+='-'.repeat(50)+'\n';
+    lista.forEach(function(c,idx){
+      texto+=(idx+1)+'. '+formatDateTime(c.cobradaEn||c.timestamp)+' | Mesa '+c.mesa+' | '+(c.mesero||'-')+' | $'+(c.total||0)+' | '+(c.metodoPago||'-')+'\n';
+    });
+
+    var blob=new Blob([texto],{type:'text/plain;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='historial_ventas_'+new Date().toISOString().slice(0,10)+'.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+  });
+}
+
+// ─── TOP VENTAS ───────────────────────────────────────────
+window.abrirTopVentas=function(){
+  obtenerTodoHistorial(function(todas){
+    var lista=Object.values(todas);
+    var conteo={};
+    lista.forEach(function(c){
+      var items=toArr(c.items);
+      items.forEach(function(i){
+        var nombre=(i.emoji||'')+' '+(i.nombre||'Producto');
+        if(!conteo[nombre]) conteo[nombre]={nombre:nombre,qty:0,total:0};
+        conteo[nombre].qty+=(i.qty||1);
+        conteo[nombre].total+=((i.precio||0)*(i.qty||1));
+      });
+    });
+    var ranking=Object.values(conteo).sort(function(a,b){return b.qty-a.qty;}).slice(0,20);
+    if(ranking.length===0){
+      document.getElementById('topVentasContenido').innerHTML='<div style="text-align:center;padding:32px;color:var(--muted)">Sin datos aún</div>';
+    } else {
+      var html='<table class="hist-table"><thead><tr><th>#</th><th>Producto</th><th style="text-align:right">Vendidos</th><th style="text-align:right">Total $</th></tr></thead><tbody>';
+      ranking.forEach(function(r,idx){
+        var medal=idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':(idx+1);
+        html+='<tr><td>'+medal+'</td><td>'+r.nombre+'</td><td style="text-align:right;font-weight:600">'+r.qty+'</td><td style="text-align:right">$'+r.total+'</td></tr>';
+      });
+      html+='</tbody></table>';
+      document.getElementById('topVentasContenido').innerHTML=html;
+    }
+    document.getElementById('modalTopVentas').classList.add('open');
+  });
+}
+
+window.__initFirebase=initFirebase;
+if(window.__authReady){
+  initFirebase();
+}
+</script>
+
+</body>
+</html>

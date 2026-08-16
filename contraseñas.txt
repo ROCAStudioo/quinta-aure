@@ -1,0 +1,26 @@
+CONTRASEÑAS DEL SISTEMA — QUINTA AURE
+========================================
+
+MÓDULO MESERO
+  PIN universal: 1000
+  (El mesero escribe su nombre + este PIN)
+
+MÓDULO COCINA
+  Contraseña: Quinta26| 
+
+MÓDULO BEBIDAS
+  Contraseña: Quinta26
+
+MÓDULO CAJA
+  Contraseña de acceso: Aure26
+  Contraseña para corte de caja: Aure26
+  Contraseña para limpiar historial: Aure26
+
+========================================
+Nota: Para cambiar estas contraseñas, editar:
+- mesero.html → const PIN_MESERO = '1000'
+- cocina.html → if (input === 'Quinta26')
+- bebidas.html → if(...value==='Quinta26')
+- caja.html → if(input==='Aure26') y if(pass!=='Aure26')
+
+https://quinta-aure-default-rtdb.firebaseio.com/

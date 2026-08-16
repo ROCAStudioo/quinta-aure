@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cocina — Cola de Pedidos</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080a0d;
+    --surface: #111318;
+    --surface2: #191c23;
+    --border: #242830;
+    --accent: #f59e0b;
+    --accent2: #ef4444;
+    --green: #22c55e;
+    --blue: #3b82f6;
+    --text: #e8eaf0;
+    --muted: #5a6270;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow: hidden;
+    background-image:
+      radial-gradient(ellipse at 20% 0%, rgba(245,158,11,.04) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 100%, rgba(239,68,68,.04) 0%, transparent 50%);
+  }
+
+  /* HEADER */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 3px; color: var(--accent); }
+  .header-info { display: flex; align-items: center; gap: 32px; }
+  .stat-item { text-align: center; }
+  .stat-value { font-family: 'Bebas Neue', sans-serif; font-size: 28px; letter-spacing: 1px; }
+  .stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; }
+  .stat-item.pending .stat-value { color: var(--accent); }
+  .stat-item.done .stat-value { color: var(--green); }
+  .clock { font-family: 'Bebas Neue', sans-serif; font-size: 28px; color: var(--muted); letter-spacing: 2px; }
+  .status-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.online { background: var(--green); box-shadow: 0 0 10px var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  /* MAIN */
+  .main {
+    height: calc(100vh - 64px);
+    overflow-y: auto;
+    padding: 24px 32px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .main::-webkit-scrollbar { width: 4px; }
+  .main::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .cola-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 20px;
+  }
+
+  /* TARJETA DE ORDEN */
+  .orden-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+    animation: cardIn .4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: all .3s ease;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: scale(.9) translateY(20px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .orden-card.urgente { border-color: rgba(239,68,68,.5); }
+  .orden-card.urgente .card-header { background: rgba(239,68,68,.08); }
+
+  .card-header {
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .card-mesa {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    line-height: 1;
+  }
+  .card-meta { text-align: right; }
+  .card-mesero { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .card-timer {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 1px;
+  }
+  .card-timer.normal { color: var(--green); }
+  .card-timer.warning { color: var(--accent); }
+  .card-timer.urgent { color: var(--accent2); }
+
+  .card-items { padding: 16px 22px; }
+  .card-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
+    transition: all .3s;
+  }
+  .card-item:last-child { border-bottom: none; }
+  .card-item.entregado {
+    opacity: .35;
+    text-decoration: line-through;
+  }
+  .item-emoji { font-size: 36px; flex-shrink: 0; }
+  .item-text { flex: 1; }
+  .item-nombre { font-size: 20px; font-weight: 600; }
+  .item-qty {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    flex-shrink: 0;
+  }
+  .item-status {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+  }
+  .item-status.done { background: var(--green); border-color: var(--green); }
+
+  .card-footer {
+    padding: 12px 18px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .progress-bar {
+    height: 4px;
+    background: var(--border);
+    border-radius: 2px;
+    flex: 1;
+    margin-right: 12px;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--green);
+    border-radius: 2px;
+    transition: width .5s ease;
+  }
+  .progress-text { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  .card-completa-banner {
+    padding: 10px 18px;
+    background: rgba(34,197,94,.1);
+    border-top: 1px solid rgba(34,197,94,.3);
+    text-align: center;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--green);
+    letter-spacing: 1px;
+  }
+
+  /* ESTADO VACIO */
+  .empty-cocina {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    pointer-events: none;
+  }
+  .empty-icon { font-size: 80px; margin-bottom: 20px; opacity: .3; }
+  .empty-title { font-family: 'Bebas Neue', sans-serif; font-size: 36px; letter-spacing: 3px; color: var(--muted); margin-bottom: 8px; }
+  .empty-sub { font-size: 15px; color: var(--muted); }
+
+  /* NOTIF */
+  .nueva-orden-notif {
+    position: fixed;
+    top: 80px;
+    right: 24px;
+    background: var(--accent);
+    color: #000;
+    padding: 12px 20px;
+    border-radius: var(--radius);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 18px;
+    letter-spacing: 2px;
+    z-index: 100;
+    transform: translateX(200%);
+    transition: transform .3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    box-shadow: 0 8px 32px rgba(245,158,11,.4);
+  }
+  .nueva-orden-notif.show { transform: translateX(0); }
+
+  /* CONFIG */
+  .config-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 300;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .config-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 28px;
+    width: 100%;
+    max-width: 480px;
+  }
+  .config-title { font-family: 'Bebas Neue', sans-serif; font-size: 30px; letter-spacing: 2px; color: var(--accent); margin-bottom: 8px; }
+  .config-sub { font-size: 14px; color: var(--muted); margin-bottom: 24px; line-height: 1.6; }
+  .config-input {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    width: 100%;
+    margin-bottom: 16px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .config-input:focus { border-color: var(--accent); }
+  .btn {
+    width: 100%;
+    padding: 16px;
+    border-radius: var(--radius);
+    border: none;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 2px;
+    cursor: pointer;
+    background: var(--accent);
+    color: #000;
+    transition: all .2s;
+  }
+  .btn:hover { box-shadow: 0 0 20px rgba(245,158,11,.4); }
+  .config-hint { font-size: 12px; color: var(--muted); margin-bottom: 20px; line-height: 1.5; }
+  .config-hint a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<!-- AUTH -->
+<div class="config-overlay" id="authOverlay">
+  <div class="config-box">
+    <div class="config-title">🔒 ACCESO RESTRINGIDO</div>
+    <div class="config-sub">Ingresa la contraseña para acceder al módulo de Cocina.</div>
+    <input class="config-input" id="authInput" placeholder="Contraseña" type="password" onkeydown="if(event.key==='Enter') verificarAuth()">
+    <div id="authError" style="color:#ef4444;font-size:12px;margin-bottom:12px;display:none">Contraseña incorrecta</div>
+    <button class="btn" onclick="verificarAuth()">ENTRAR</button>
+  </div>
+</div>
+
+<!-- CONFIG -->
+<div class="config-overlay" id="configOverlay" style="display:none">
+  <div class="config-box">
+    <div class="config-title">🍳 PANTALLA COCINA</div>
+    <div class="config-sub">Ingresa la misma URL de Firebase que usaste en la tablet del mesero para sincronizar los pedidos.</div>
+    <input class="config-input" id="firebaseUrl" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com" type="url">
+    <div class="config-hint">Debe ser la misma URL configurada en el dispositivo del mesero y la caja.</div>
+    <button class="btn" onclick="guardarConfig()">CONECTAR COCINA</button>
+  </div>
+</div>
+
+<header>
+  <div class="logo">🍳 COCINA</div>
+  <div class="header-info">
+    <div class="stat-item pending">
+      <div class="stat-value" id="countPendientes">0</div>
+      <div class="stat-label">En cola</div>
+    </div>
+    <div class="stat-item done">
+      <div class="stat-value" id="countCompletadas">0</div>
+      <div class="stat-label">Listas hoy</div>
+    </div>
+    <div class="clock" id="clock">00:00</div>
+    <div class="status-indicator">
+      <div class="dot" id="dot"></div>
+      <span id="statusText">Conectando...</span>
+    </div>
+  </div>
+</header>
+
+<div id="offlineBanner" style="display:none;background:rgba(239,68,68,.15);border-bottom:2px solid var(--accent2);padding:10px 32px;align-items:center;gap:10px;font-size:14px;color:var(--accent2);font-weight:600">⚠ Sin conexión a Firebase — esperando reconexión...</div>
+<div class="main" id="main">
+  <div class="empty-cocina" id="emptyCocina">
+    <div class="empty-icon">🍽</div>
+    <div class="empty-title">SIN PEDIDOS</div>
+    <div class="empty-sub">Los pedidos de los meseros aparecerán aquí en tiempo real</div>
+  </div>
+  <div class="cola-grid" id="colaGrid"></div>
+</div>
+
+<div class="nueva-orden-notif" id="notif">🔔 NUEVA ORDEN</div>
+
+<script>
+function verificarAuth() {
+  const input = document.getElementById('authInput').value;
+  if (input === 'Quinta26') {
+    sessionStorage.setItem('auth_cocina', '1');
+    document.getElementById('authOverlay').style.display = 'none';
+    window.__authReady = true;
+    if (window.__initFirebase) window.__initFirebase();
+  } else {
+    document.getElementById('authError').style.display = 'block';
+    document.getElementById('authInput').value = '';
+    document.getElementById('authInput').focus();
+  }
+}
+
+if (sessionStorage.getItem('auth_cocina') === '1') {
+  document.getElementById('authOverlay').style.display = 'none';
+  window.__authReady = true;
+} else {
+  document.getElementById('authOverlay').style.display = 'flex';
+  window.__authReady = false;
+  setTimeout(() => document.getElementById('authInput').focus(), 100);
+}
+</script>
+
+<script type="module">
+import { initializeApp } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm';
+import { getDatabase, ref, onValue, set } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/database/+esm';
+
+let db = null;
+function toArray(v) { if (!v) return []; if (Array.isArray(v)) return v; return Object.values(v); }
+let ordenes = {};
+let timers = {};
+let primeraVez = true;
+
+window.guardarConfig = function() {
+  const url = document.getElementById('firebaseUrl').value.trim();
+  if (!url.includes('firebaseio.com')) { alert('URL inválida'); return; }
+  localStorage.setItem('firebaseUrlCocina', url);
+  document.getElementById('configOverlay').style.display = 'none';
+  initFirebase();
+}
+
+function initFirebase() {
+  const url = localStorage.getItem('firebaseUrlCocina');
+  if (!url) { document.getElementById('configOverlay').style.display = 'flex'; return; }
+  document.getElementById('configOverlay').style.display = 'none';
+
+  const app = initializeApp({ databaseURL: url }, 'cocina');
+  db = getDatabase(app);
+
+  onValue(ref(db, '.info/connected'), snap => {
+    const dot = document.getElementById('dot');
+    const txt = document.getElementById('statusText');
+    if (snap.val()) {
+      dot.className = 'dot online';
+      txt.textContent = 'En línea';
+      document.getElementById('offlineBanner').style.display='none';
+    } else {
+      dot.className = 'dot';
+      txt.textContent = 'Sin conexión';
+      document.getElementById('offlineBanner').style.display='flex';
+    }
+  });
+
+  escucharOrdenes();
+}
+
+// ─── RELOJ ───────────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent =
+    now.toLocaleTimeString('es-MX', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ─── ÓRDENES ─────────────────────────────────────────────────────
+function escucharOrdenes() {
+  onValue(ref(db, 'ordenes'), snap => {
+    const prev = Object.keys(ordenes).length;
+    ordenes = {};
+    snap.forEach(child => {
+      const o = child.val();
+      if (o.estado !== 'cobrada' && o.estado !== 'cancelada' && o.estado !== 'cuenta-enviada') {
+        // Solo mostrar si tiene items pendientes de entregar
+        const items = toArray(o.items); o.items = items; const tienePendientes = items.length > 0 && items.some(i => !i.entregado);
+        if (tienePendientes) {
+          ordenes[child.key] = o;
+        }
+      }
+    });
+
+    const curr = Object.keys(ordenes).length;
+    if (!primeraVez && curr > prev) mostrarNotif();
+    primeraVez = false;
+
+    renderCola();
+    actualizarStats();
+    // Debug: mostrar en consola cuando se actualiza
+    console.log('Cocina actualizada:', Object.keys(ordenes).length, 'ordenes activas');
+  });
+}
+
+function renderCola() {
+  const grid = document.getElementById('colaGrid');
+  const empty = document.getElementById('emptyCocina');
+  const lista = Object.values(ordenes).sort((a, b) => a.timestamp - b.timestamp);
+
+  if (lista.length === 0) {
+    grid.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  grid.innerHTML = lista.map(o => buildCard(o)).join('');
+  lista.forEach(o => startTimer(o.id, o.timestamp));
+}
+
+function buildCard(o) {
+  const allItems = toArray(o.items); const pendientes = allItems.filter(i => !i.entregado);
+  const entregados = allItems.filter(i => i.entregado).length;
+  const total = allItems.length;
+  const pct = Math.round((entregados / total) * 100);
+  const mins = Math.floor((Date.now() - o.timestamp) / 60000);
+  const urgente = mins >= 15;
+
+  return `
+  <div class="orden-card ${urgente ? 'urgente' : ''}" data-id="${o.id}">
+    <div class="card-header">
+      <div>
+        <div class="card-mesa">MESA ${o.mesa}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">${o.id.slice(-6).toUpperCase()}</div>
+      </div>
+      <div class="card-meta">
+        <div class="card-mesero">👤 ${o.mesero}</div>
+        <div class="card-timer ${urgente ? 'urgent' : mins >= 8 ? 'warning' : 'normal'}" id="timer-${o.id}">
+          ${formatElapsed(o.timestamp)}
+        </div>
+      </div>
+    </div>
+    ${o.nota?'<div style="padding:14px 22px;font-size:18px;font-weight:600;color:#f59e0b;background:rgba(245,158,11,.1);border-bottom:2px solid rgba(245,158,11,.3)">📝 '+o.nota+'</div>':''}
+    <div class="card-items">
+      ${pendientes.map((item, idx) => `
+        <div class="card-item">
+          <div class="item-emoji">${item.emoji}</div>
+          <div class="item-text">
+            <div class="item-nombre">${item.nombre}</div>
+          </div>
+          <div class="item-qty">x${item.qty}</div>
+          <button style="padding:6px 14px;background:var(--green);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0" onclick="marcarListoCocina('${o.id}',${allItems.indexOf(item)})">LISTO</button>
+        </div>`).join('')}
+    </div>
+    <div class="card-footer">
+      <div class="progress-bar">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="progress-text">${pendientes.length} pendiente${pendientes.length!==1?'s':''}</div>
+    </div>
+  </div>`;
+}
+
+window.marcarListoCocina=async function(oid,idx){
+  try{
+    await set(ref(db,'ordenes/'+oid+'/items/'+idx+'/entregado'),true);
+  }catch(e){console.error(e);}
+}
+
+function startTimer(id, ts) {
+  if (timers[id]) clearInterval(timers[id]);
+  timers[id] = setInterval(() => {
+    const el = document.getElementById(`timer-${id}`);
+    if (!el) { clearInterval(timers[id]); return; }
+    const mins = Math.floor((Date.now() - ts) / 60000);
+    el.textContent = formatElapsed(ts);
+    el.className = `card-timer ${mins >= 15 ? 'urgent' : mins >= 8 ? 'warning' : 'normal'}`;
+  }, 10000);
+}
+
+function formatElapsed(ts) {
+  const diff = Math.floor((Date.now() - ts) / 1000);
+  const m = Math.floor(diff / 60);
+  const s = diff % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function actualizarStats() {
+  document.getElementById('countPendientes').textContent = Object.keys(ordenes).length;
+}
+
+function playBeep(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const osc=ctx.createOscillator();const gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=880;osc.type='sine';
+    gain.gain.setValueAtTime(0.3,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.5);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.5);
+    // Second beep
+    setTimeout(()=>{
+      const osc2=ctx.createOscillator();const gain2=ctx.createGain();
+      osc2.connect(gain2);gain2.connect(ctx.destination);
+      osc2.frequency.value=1100;osc2.type='sine';
+      gain2.gain.setValueAtTime(0.3,ctx.currentTime);
+      gain2.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.5);
+      osc2.start(ctx.currentTime);osc2.stop(ctx.currentTime+0.5);
+    },300);
+  }catch(e){}
+}
+
+function mostrarNotif() {
+  const el = document.getElementById('notif');
+  el.classList.add('show');
+  // Audio beep simulado (sin sonido externo)
+  playBeep();
+    setTimeout(() => el.classList.remove('show'), 4000);
+}
+
+window.__initFirebase = initFirebase;
+if (window.__authReady) {
+  initFirebase();
+}
+</script>
+</body>
+</html>
