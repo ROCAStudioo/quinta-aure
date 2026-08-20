@@ -314,6 +314,7 @@
     <div class="status-indicator">
       <div class="dot" id="dot"></div>
       <span id="statusText">Conectando...</span>
+      <button onclick="reconectarCocina()" style="margin-left:12px;padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer" title="Reconfigurar Firebase">⚙️</button>
     </div>
   </div>
 </header>
@@ -370,7 +371,12 @@ window.guardarConfig = function() {
   if (!url.includes('firebaseio.com')) { alert('URL inválida'); return; }
   localStorage.setItem('firebaseUrlCocina', url);
   document.getElementById('configOverlay').style.display = 'none';
-  initFirebase();
+  location.reload();
+}
+
+window.reconectarCocina = function() {
+  localStorage.removeItem('firebaseUrlCocina');
+  location.reload();
 }
 
 function initFirebase() {

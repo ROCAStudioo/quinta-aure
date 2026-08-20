@@ -68,7 +68,7 @@
   <div class="header-info">
     <div class="stat-item"><div class="stat-value" id="countPendientes">0</div><div class="stat-label">En cola</div></div>
     <div class="clock" id="clock">00:00</div>
-    <div class="status-indicator"><div class="dot" id="dot"></div><span id="statusText">Conectando...</span></div>
+    <div class="status-indicator"><div class="dot" id="dot"></div><span id="statusText">Conectando...</span><button onclick="reconectarBebidas()" style="margin-left:12px;padding:4px 10px;background:transparent;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer" title="Reconfigurar Firebase">⚙️</button></div>
   </div>
 </header>
 
@@ -102,7 +102,12 @@ window.guardarConfig=function(){
   if(!url.includes('firebaseio.com')){alert('URL inválida');return;}
   localStorage.setItem('firebaseUrlBebidas',url);
   document.getElementById('configOverlay').style.display='none';
-  initFirebase();
+  location.reload();
+}
+
+window.reconectarBebidas=function(){
+  localStorage.removeItem('firebaseUrlBebidas');
+  location.reload();
 }
 
 function initFirebase(){

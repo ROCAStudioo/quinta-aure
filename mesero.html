@@ -691,7 +691,7 @@ function renderMisOrdenes(){
           <div class="platillo-entrega-nombre">${item.emoji||'📦'} ${item.nombre}</div>
           <div class="platillo-entrega-detalle">x${item.qty} - $${item.precio*item.qty}</div>
         </div>
-        ${item.entregado?`<span class="entregado-badge">Entregado</span>`:`<button class="btn-entregar" onclick="marcarEntregado('${o.id}',${idx},'${o._src||'ordenes'}')">Entregar</button>`}
+        ${item.entregado?`<span class="entregado-badge">Entregado</span>`:`<button class="btn-entregar" onclick="marcarEntregado('${o.id}',${idx},'${o._src||'ordenes'}')">Entregar</button><button style="padding:6px 10px;background:transparent;border:1px solid var(--accent2);border-radius:8px;color:var(--accent2);font-size:11px;cursor:pointer;margin-left:4px" onclick="eliminarItemOrden('${o.id}',${idx},'${o._src||'ordenes'}')">✕</button>`}
       </div>`).join('')).join('');
     return `<div class="orden-card">
       <div class="orden-card-header"><span class="orden-card-mesa">MESA ${mesa}</span><span class="orden-card-time">${ords.length} orden${ords.length>1?'es':''}</span></div>
@@ -795,6 +795,29 @@ window.marcarEntregado=async function(oid,idx,src){
     showToast('Entregado','success');
   }catch(e){showToast('Error','error');console.error(e);}
 }
+
+window.eliminarItemOrden=async function(oid,idx,src){
+  if(!confirm('¿Eliminar este producto de la orden?')) return;
+  if(!db){showToast('Sin conexión','error');return;}
+  src=src||'ordenes';
+  try{
+    // Get current order from misOrdenes
+    const orden=misOrdenes[oid];
+    if(!orden) return;
+    const items=[...orden.items];
+    items.splice(idx,1);
+    if(items.length===0){
+      // No quedan items, eliminar la orden completa
+      await remove(ref(db,src+'/'+oid));
+      showToast('Orden eliminada','info');
+    } else {
+      // Actualizar la orden sin el item eliminado
+      await set(ref(db,src+'/'+oid+'/items'),items);
+      showToast('Producto eliminado','success');
+    }
+  }catch(e){showToast('Error','error');console.error(e);}
+}
+
 window.cancelarMesa=async function(mesa){
   if(!confirm('¿Cancelar órdenes de mesa '+mesa+'?'))return;
   const ords=Object.values(misOrdenes).filter(o=>Number(o.mesa)===Number(mesa));
