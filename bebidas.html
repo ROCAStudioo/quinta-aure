@@ -73,6 +73,10 @@
 </header>
 
 <div id="offlineBannerB" style="display:none;background:rgba(239,68,68,.15);border-bottom:2px solid #ef4444;padding:10px 32px;align-items:center;gap:10px;font-size:14px;color:#ef4444;font-weight:600">⚠ Sin conexión a Firebase — esperando reconexión...</div>
+<div id="soundBannerB" style="background:rgba(59,130,246,.1);border-bottom:2px solid var(--accent);padding:16px 32px;display:flex;align-items:center;justify-content:center;gap:12px;cursor:pointer" onclick="activarSonidoB()">
+  <span style="font-size:24px">🔔</span>
+  <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--accent)">PRESIONA AQUÍ PARA ACTIVAR SONIDO</span>
+</div>
 <div class="main" id="main">
   <div class="empty-state" id="emptyState"><div class="empty-icon">🥤</div><div class="empty-title">SIN PEDIDOS</div><div class="empty-sub">Los pedidos de bebidas aparecerán aquí</div></div>
   <div class="cola-grid" id="colaGrid"></div>
@@ -91,9 +95,14 @@ if(sessionStorage.getItem('auth_bebidas')==='1'){document.getElementById('authOv
 else{document.getElementById('authOverlay').style.display='flex';window.__authReady=false;}
 </script>
 
-<script type="module">
-import { initializeApp } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm';
-import { getDatabase, ref, onValue } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/database/+esm';
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+// Compat wrappers
+function initializeApp(config, name) { return firebase.initializeApp(config, name); }
+function getDatabase(app) { return app.database(); }
+function ref(db, path) { return db.ref(path); }
+function onValue(reference, callback) { reference.on('value', function(snap) { callback(snap); }); }
 
 let db=null,ordenes={};
 
@@ -149,6 +158,19 @@ function escuchar(){
 }
 
 let primeraVezB=true,prevCount=0;
+
+window.activarSonidoB=function(){
+  try{
+    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+    var osc=ctx.createOscillator();var gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=660;osc.type='sine';
+    gain.gain.setValueAtTime(0.2,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.3);
+  }catch(e){}
+  document.getElementById('soundBannerB').style.display='none';
+}
 
 function playBeep(){
   try{

@@ -320,6 +320,10 @@
 </header>
 
 <div id="offlineBanner" style="display:none;background:rgba(239,68,68,.15);border-bottom:2px solid var(--accent2);padding:10px 32px;align-items:center;gap:10px;font-size:14px;color:var(--accent2);font-weight:600">⚠ Sin conexión a Firebase — esperando reconexión...</div>
+<div id="soundBanner" style="background:rgba(245,158,11,.1);border-bottom:2px solid var(--accent);padding:16px 32px;display:flex;align-items:center;justify-content:center;gap:12px;cursor:pointer" onclick="activarSonido()">
+  <span style="font-size:24px">🔔</span>
+  <span style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--accent)">PRESIONA AQUÍ PARA ACTIVAR SONIDO</span>
+</div>
 <div class="main" id="main">
   <div class="empty-cocina" id="emptyCocina">
     <div class="empty-icon">🍽</div>
@@ -356,9 +360,15 @@ if (sessionStorage.getItem('auth_cocina') === '1') {
 }
 </script>
 
-<script type="module">
-import { initializeApp } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/app/+esm';
-import { getDatabase, ref, onValue, set } from 'https://cdn.jsdelivr.net/npm/firebase@10.12.0/database/+esm';
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+// Compat wrappers to keep existing code working
+function initializeApp(config, name) { return firebase.initializeApp(config, name); }
+function getDatabase(app) { return app.database(); }
+function ref(db, path) { return db.ref(path); }
+function onValue(reference, callback) { reference.on('value', function(snap) { callback(snap); }); }
+function set(reference, value) { return reference.set(value); }
 
 let db = null;
 function toArray(v) { if (!v) return []; if (Array.isArray(v)) return v; return Object.values(v); }
@@ -498,10 +508,8 @@ function buildCard(o) {
   </div>`;
 }
 
-window.marcarListoCocina=async function(oid,idx){
-  try{
-    await set(ref(db,'ordenes/'+oid+'/items/'+idx+'/entregado'),true);
-  }catch(e){console.error(e);}
+window.marcarListoCocina=function(oid,idx){
+  set(ref(db,'ordenes/'+oid+'/items/'+idx+'/entregado'),true).catch(function(e){console.error(e);});
 }
 
 function startTimer(id, ts) {
@@ -524,6 +532,19 @@ function formatElapsed(ts) {
 
 function actualizarStats() {
   document.getElementById('countPendientes').textContent = Object.keys(ordenes).length;
+}
+
+window.activarSonido=function(){
+  try{
+    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+    var osc=ctx.createOscillator();var gain=ctx.createGain();
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.frequency.value=660;osc.type='sine';
+    gain.gain.setValueAtTime(0.2,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01,ctx.currentTime+0.3);
+    osc.start(ctx.currentTime);osc.stop(ctx.currentTime+0.3);
+  }catch(e){}
+  document.getElementById('soundBanner').style.display='none';
 }
 
 function playBeep(){
