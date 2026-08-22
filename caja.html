@@ -451,7 +451,7 @@ function renderDetalle(id){
   recibo+='<div class="recibo-restaurante">QUINTA AURE</div>';
   recibo+='<div class="recibo-sub">Sistema de Punto de Venta</div>';
   recibo+='<div class="recibo-mesa">MESA '+c.mesa+'</div>';
-  recibo+='<div class="recibo-datos">'+formatTime(c.timestamp)+'<br>Folio: '+id.slice(-8).toUpperCase()+'</div>';
+  recibo+='<div class="recibo-datos">'+formatDate(c.timestamp)+' '+formatTime(c.timestamp)+'<br>Folio: '+id.slice(-8).toUpperCase()+'</div>';
   recibo+='</div><div class="recibo-items">';
   items.forEach(function(i){
     recibo+='<div class="recibo-item">';
