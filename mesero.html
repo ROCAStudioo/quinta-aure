@@ -220,6 +220,10 @@
   <div class="manual-add">
     <input type="text" id="manualNombre" placeholder="Nombre del producto">
     <input type="number" id="manualPrecio" placeholder="$" style="max-width:80px">
+    <select id="manualArea" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;outline:none;min-width:90px">
+      <option value="alimento">🍳 Cocina</option>
+      <option value="bebida">🥤 Bebidas</option>
+    </select>
     <button onclick="agregarManual()">+</button>
   </div>
   <div style="margin-top:8px">
@@ -691,7 +695,15 @@ function renderMisOrdenes(){
           <div class="platillo-entrega-nombre">${item.emoji||'📦'} ${item.nombre}</div>
           <div class="platillo-entrega-detalle">x${item.qty} - $${item.precio*item.qty}</div>
         </div>
-        ${item.entregado?`<span class="entregado-badge">Entregado</span>`:`<button class="btn-entregar" onclick="marcarEntregado('${o.id}',${idx},'${o._src||'ordenes'}')">Entregar</button><button style="padding:6px 10px;background:transparent;border:1px solid var(--accent2);border-radius:8px;color:var(--accent2);font-size:11px;cursor:pointer;margin-left:4px" onclick="eliminarItemOrden('${o.id}',${idx},'${o._src||'ordenes'}')">✕</button>`}
+        <div style="display:flex;align-items:center;gap:4px">
+        ${item.entregado?`<span class="entregado-badge">Entregado</span>`:`
+          <button style="padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:14px;cursor:pointer" onclick="modificarQtyOrden('${o.id}',${idx},'${o._src||'ordenes'}',-1)">−</button>
+          <span style="font-size:13px;font-weight:700;min-width:18px;text-align:center">${item.qty}</span>
+          <button style="padding:4px 8px;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:14px;cursor:pointer" onclick="modificarQtyOrden('${o.id}',${idx},'${o._src||'ordenes'}',1)">+</button>
+          <button class="btn-entregar" style="margin-left:6px" onclick="marcarEntregado('${o.id}',${idx},'${o._src||'ordenes'}')">Entregar</button>
+          <button style="padding:6px 10px;background:transparent;border:1px solid var(--accent2);border-radius:8px;color:var(--accent2);font-size:11px;cursor:pointer;margin-left:4px" onclick="eliminarItemOrden('${o.id}',${idx},'${o._src||'ordenes'}')">✕</button>
+        `}
+        </div>
       </div>`).join('')).join('');
     return `<div class="orden-card">
       <div class="orden-card-header"><span class="orden-card-mesa">MESA ${mesa}</span><span class="orden-card-time">${ords.length} orden${ords.length>1?'es':''}</span></div>
@@ -727,9 +739,10 @@ window.agregarManual=function(){
   if(!mesaSeleccionada){showToast('Selecciona una mesa','error');return;}
   const nombre=document.getElementById('manualNombre').value.trim();
   const precio=parseFloat(document.getElementById('manualPrecio').value);
+  const area=document.getElementById('manualArea').value;
   if(!nombre||!precio||precio<=0){showToast('Ingresa nombre y precio','error');return;}
   manualCounter++;
-  itemsOrden[manualCounter]={id:manualCounter,nombre:nombre,precio:precio,emoji:'📦',cat:'Otro',tipo:'otro',qty:1};
+  itemsOrden[manualCounter]={id:manualCounter,nombre:nombre,precio:precio,emoji:area==='bebida'?'🥤':'📦',cat:'Otro',tipo:area,qty:1};
   document.getElementById('manualNombre').value='';document.getElementById('manualPrecio').value='';
   renderOrdenActual();showToast('Producto agregado','success');
 }
@@ -814,6 +827,33 @@ window.eliminarItemOrden=async function(oid,idx,src){
       // Actualizar la orden sin el item eliminado
       await set(ref(db,src+'/'+oid+'/items'),items);
       showToast('Producto eliminado','success');
+    }
+  }catch(e){showToast('Error','error');console.error(e);}
+}
+
+window.modificarQtyOrden=async function(oid,idx,src,delta){
+  if(!db){showToast('Sin conexión','error');return;}
+  src=src||'ordenes';
+  try{
+    const orden=misOrdenes[oid];
+    if(!orden) return;
+    const items=[...orden.items];
+    const item=items[idx];
+    if(!item) return;
+    const newQty=(item.qty||1)+delta;
+    if(newQty<=0){
+      // Si llega a 0, eliminar el item
+      items.splice(idx,1);
+      if(items.length===0){
+        await remove(ref(db,src+'/'+oid));
+        showToast('Orden eliminada','info');
+      } else {
+        await set(ref(db,src+'/'+oid+'/items'),items);
+        showToast('Producto eliminado','success');
+      }
+    } else {
+      await set(ref(db,src+'/'+oid+'/items/'+idx+'/qty'),newQty);
+      showToast('Cantidad actualizada','success');
     }
   }catch(e){showToast('Error','error');console.error(e);}
 }
