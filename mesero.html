@@ -221,6 +221,7 @@
     <input type="text" id="manualNombre" placeholder="Nombre del producto">
     <input type="number" id="manualPrecio" placeholder="$" style="max-width:80px">
     <select id="manualArea" style="background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:10px;color:var(--text);font-size:13px;outline:none;min-width:90px">
+      <option value="general">📦 General</option>
       <option value="alimento">🍳 Cocina</option>
       <option value="bebida">🥤 Bebidas</option>
     </select>
@@ -446,6 +447,9 @@ const DEFAULT_MENU = [
   // ─── BUFFET ────────────────────────────────────────────
   {id:86,nombre:'Buffet Adulto',precio:229,emoji:'🍽',cat:'Buffet',tipo:'alimento'},
   {id:87,nombre:'Buffet Niño',precio:149,emoji:'🧒',cat:'Buffet',tipo:'alimento'},
+  // ─── ENTRADAS GENERAL ──────────────────────────────────
+  {id:88,nombre:'Entrada Adultos',precio:70,emoji:'🎟',cat:'General',tipo:'general'},
+  {id:89,nombre:'Entrada Niños',precio:50,emoji:'🎟',cat:'General',tipo:'general'},
 ];
 let MENU = [...DEFAULT_MENU];
 let CATS=['Todos',...new Set(MENU.map(p=>p.cat))];
@@ -742,7 +746,8 @@ window.agregarManual=function(){
   const area=document.getElementById('manualArea').value;
   if(!nombre||!precio||precio<=0){showToast('Ingresa nombre y precio','error');return;}
   manualCounter++;
-  itemsOrden[manualCounter]={id:manualCounter,nombre:nombre,precio:precio,emoji:area==='bebida'?'🥤':'📦',cat:'Otro',tipo:area,qty:1};
+  const emoji=area==='bebida'?'🥤':area==='alimento'?'📦':'🛒';
+  itemsOrden[manualCounter]={id:manualCounter,nombre:nombre,precio:precio,emoji:emoji,cat:'General',tipo:area,qty:1};
   document.getElementById('manualNombre').value='';document.getElementById('manualPrecio').value='';
   renderOrdenActual();showToast('Producto agregado','success');
 }
@@ -767,8 +772,9 @@ window.confirmarEnvio=async function(){
   if(!mesaSeleccionada)return;const items=Object.values(itemsOrden);if(items.length===0)return;
   if(!db){showToast('Sin conexión. Espera un momento e intenta de nuevo.','error');initFirebase();return;}
   const nota=document.getElementById('notaOrden').value.trim();
-  const alimentos=items.filter(i=>i.tipo!=='bebida');
+  const alimentos=items.filter(i=>i.tipo==='alimento');
   const bebidas=items.filter(i=>i.tipo==='bebida');
+  const generales=items.filter(i=>i.tipo!=='alimento'&&i.tipo!=='bebida');
   function limpiarItem(i){return {nombre:i.nombre,precio:i.precio,emoji:i.emoji||'📦',qty:i.qty,cat:i.cat||'',tipo:i.tipo||'otro',entregado:false,variante:i.variante||'',extras:i.extras||[]};}
   try{
     if(alimentos.length>0){
@@ -778,6 +784,10 @@ window.confirmarEnvio=async function(){
     if(bebidas.length>0){
       const bRef=push(ref(db,'bebidas'));
       await set(bRef,{id:bRef.key,mesa:mesaSeleccionada,mesero:meseroNombre,nota:nota||'',items:bebidas.map(limpiarItem),estado:'pendiente',timestamp:Date.now()});
+    }
+    if(generales.length>0){
+      const gRef=push(ref(db,'ordenes'));
+      await set(gRef,{id:gRef.key,mesa:mesaSeleccionada,mesero:meseroNombre,nota:nota||'',items:generales.map(limpiarItem),estado:'pendiente',timestamp:Date.now(),esGeneral:true});
     }
     showToast('Orden mesa '+mesaSeleccionada+' enviada','success');
     // Auto deduct stock for each item sent

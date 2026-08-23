@@ -575,6 +575,8 @@ window.cobrar=async function(){
   totalCobradoHoy+=(c.total||0);
   mesasHoy++;
   actualizarResumen();
+  // Abrir caja registradora al cobrar
+  abrirCajaRegistradora();
   // Mostrar modal de confirmación para imprimir ticket
   document.getElementById('modalImprimirTicket').classList.add('open');
 }
@@ -603,13 +605,11 @@ window.imprimirRecibo=function(){window.print();}
 
 window.imprimirYCerrar=function(){
   cerrarModal('modalImprimirTicket');
-  abrirCajaRegistradora();
   setTimeout(function(){window.print();},200);
 }
 
 window.noImprimirCaja=function(){
   cerrarModal('modalImprimirTicket');
-  abrirCajaRegistradora();
 }
 
 function abrirCajaRegistradora(){

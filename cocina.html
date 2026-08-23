@@ -430,7 +430,7 @@ function escucharOrdenes() {
     ordenes = {};
     snap.forEach(child => {
       const o = child.val();
-      if (o.estado !== 'cobrada' && o.estado !== 'cancelada' && o.estado !== 'cuenta-enviada') {
+      if (o.estado !== 'cobrada' && o.estado !== 'cancelada' && o.estado !== 'cuenta-enviada' && !o.esGeneral) {
         // Solo mostrar si tiene items pendientes de entregar
         const items = toArray(o.items); o.items = items; const tienePendientes = items.length > 0 && items.some(i => !i.entregado);
         if (tienePendientes) {
