@@ -529,12 +529,24 @@ function cargarMenuFirebase(){
         recalcCats();
         renderCategorias();
         renderMenu();
+        // Verificar si faltan productos del DEFAULT_MENU y agregarlos
+        sincronizarNuevosProductos(items);
       }
     } else {
       // First time: upload default menu to Firebase
       subirMenuDefault();
     }
   });
+}
+async function sincronizarNuevosProductos(existentes){
+  if(!db) return;
+  const nombresExistentes=new Set(existentes.map(i=>(i.nombre||'').toLowerCase()));
+  const faltantes=DEFAULT_MENU.filter(p=>!nombresExistentes.has(p.nombre.toLowerCase()));
+  if(faltantes.length>0){
+    for(const p of faltantes){
+      await set(ref(db,'menu/item_'+p.id),p).catch(()=>{});
+    }
+  }
 }
 async function subirMenuDefault(){
   if(!db) return;
