@@ -508,7 +508,7 @@ var LOGO_TICKET='Logo.png';
 // Ancho del logo impreso, en PUNTOS de la impresora (203 DPI → 1 cm ≈ 80 pts).
 // QZ ignora el escalado con imágenes 'file', así que pre-escalamos el logo
 // nosotros mismos con un <canvas> a este ancho exacto en píxeles.
-var LOGO_ANCHO_PTS=80;   // ≈ 1 cm
+var LOGO_ANCHO_PTS=240;   // ≈ 3 cm (203 DPI → 1 cm ≈ 80 pts)
 var _logoDataUrl=null;   // cache del logo ya escalado (data URL)
 
 // Carga el logo y lo redimensiona a LOGO_ANCHO_PTS de ancho (alto proporcional)
@@ -869,13 +869,16 @@ window.noImprimirCaja=function(){
   cerrarModal('modalImprimirTicket');
 }
 
+// Zona horaria fija de México (centro). Desde oct-2022 ya no hay horario de
+// verano, así que fijarla evita el desfase de 1 hora si la PC quedó con DST.
+var TZ_MX='America/Mexico_City';
 function formatTime(ts){
   if(!ts) return '';
-  return new Date(ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+  return new Date(ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',timeZone:TZ_MX});
 }
 function formatDate(ts){
   if(!ts) return '';
-  return new Date(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'});
+  return new Date(ts).toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric',timeZone:TZ_MX});
 }
 function formatDateTime(ts){
   if(!ts) return '';

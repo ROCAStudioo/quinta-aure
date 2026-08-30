@@ -273,6 +273,10 @@ let mesasOcupadas={};
 let ultimoRecibo=null;
 let productosFrecuentes=[];
 
+// Zona horaria fija de México (centro). Desde oct-2022 ya no hay horario de
+// verano, así que fijarla evita el desfase de 1 hora si la PC quedó con DST.
+const TZ_MX='America/Mexico_City';
+
 // ─── QZ TRAY (misma dinámica que el módulo Caja) ─────────
 let qzListo=false;          // true cuando QZ Tray está conectado
 let impresoraGHIA=null;     // nombre de la impresora en Windows (localStorage)
@@ -349,7 +353,7 @@ function construirTicketTiendaTexto(r){
   var t='';
   t+=centro('QUINTA AURE');
   t+=centro('TIENDA');
-  t+=f.toLocaleDateString('es-MX')+' '+f.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+'\n';
+  t+=f.toLocaleDateString('es-MX',{timeZone:TZ_MX})+' '+f.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',timeZone:TZ_MX})+'\n';
   t+='-'.repeat(W)+'\n';
   r.items.forEach(function(i){ t+=linea((i.nombre||'Producto')+' x'+(i.qty||1),'$'+((i.precio||0)*(i.qty||1))); });
   t+='-'.repeat(W)+'\n';
@@ -366,7 +370,7 @@ const LOGO_TICKET='Logo.png';
 // Ancho del logo impreso, en PUNTOS de la impresora (203 DPI → 1 cm ≈ 80 pts).
 // QZ ignora el escalado con imágenes 'file', así que pre-escalamos el logo
 // nosotros mismos con un <canvas> a este ancho exacto en píxeles.
-const LOGO_ANCHO_PTS=80;   // ≈ 1 cm
+const LOGO_ANCHO_PTS=240;   // ≈ 3 cm (203 DPI → 1 cm ≈ 80 pts)
 let _logoDataUrl=null;     // cache del logo ya escalado (data URL)
 
 // Carga el logo y lo redimensiona a LOGO_ANCHO_PTS de ancho (alto proporcional)
@@ -763,7 +767,7 @@ window.imprimirTicket=async function(){
   html+='<div style="text-align:center;margin-bottom:4px"><img src="Logo.png" alt="Quinta Aure" style="width:32mm;max-width:90%;height:auto;object-fit:contain"></div>';
   html+='<div style="text-align:center;font-weight:bold;font-size:12px;margin-bottom:2px">QUINTA AURE</div>';
   html+='<div style="text-align:center;font-size:9px;margin-bottom:4px">TIENDA</div>';
-  html+='<div style="text-align:center;font-size:9px;margin-bottom:6px">'+fecha.toLocaleDateString('es-MX')+' '+fecha.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+'</div>';
+  html+='<div style="text-align:center;font-size:9px;margin-bottom:6px">'+fecha.toLocaleDateString('es-MX',{timeZone:TZ_MX})+' '+fecha.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',timeZone:TZ_MX})+'</div>';
   html+='<div style="border-top:1px dashed #000;margin:4px 0"></div>';
   r.items.forEach(i=>{
     html+='<div style="display:flex;justify-content:space-between;padding:1px 0"><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+i.nombre+'</span><span style="margin-left:4px;white-space:nowrap">x'+i.qty+' $'+(i.precio*i.qty)+'</span></div>';
