@@ -446,8 +446,10 @@ const DEFAULT_MENU = [
   {id:84,nombre:'Licor 43 (Copeo)',precio:70,emoji:'🥃',cat:'Digestivo',tipo:'bebida'},
   {id:85,nombre:'Baileys (Copeo)',precio:120,emoji:'🥃',cat:'Digestivo',tipo:'bebida'},
   // ─── BUFFET ────────────────────────────────────────────
-  {id:86,nombre:'Buffet Adulto',precio:229,emoji:'🍽',cat:'Buffet',tipo:'alimento'},
-  {id:87,nombre:'Buffet Niño',precio:149,emoji:'🧒',cat:'Buffet',tipo:'alimento'},
+  // El buffet NO se prepara en cocina (el cliente se sirve solo), por eso va
+  // como tipo 'general': se cobra normal pero no aparece en la pantalla de cocina.
+  {id:86,nombre:'Buffet Adulto',precio:229,emoji:'🍽',cat:'Buffet',tipo:'general'},
+  {id:87,nombre:'Buffet Niño',precio:149,emoji:'🧒',cat:'Buffet',tipo:'general'},
   // ─── ENTRADAS GENERAL ──────────────────────────────────
   {id:88,nombre:'Entrada Adultos',precio:70,emoji:'🎟',cat:'General',tipo:'general'},
   {id:89,nombre:'Entrada Niños',precio:50,emoji:'🎟',cat:'General',tipo:'general'},
@@ -546,6 +548,14 @@ async function sincronizarNuevosProductos(existentes){
   if(faltantes.length>0){
     for(const p of faltantes){
       await set(ref(db,'menu/item_'+p.id),p).catch(()=>{});
+    }
+  }
+  // Corrección: el Buffet no se prepara en cocina. Si algún producto de la
+  // categoría "Buffet" quedó guardado con tipo 'alimento' (versiones previas),
+  // lo pasamos a 'general' para que NO aparezca en la pantalla de cocina.
+  for(const it of existentes){
+    if((it.cat||'').toLowerCase()==='buffet' && it.tipo==='alimento' && it._key){
+      await set(ref(db,'menu/'+it._key+'/tipo'),'general').catch(()=>{});
     }
   }
 }

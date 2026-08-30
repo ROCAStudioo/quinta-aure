@@ -431,8 +431,15 @@ function escucharOrdenes() {
     snap.forEach(child => {
       const o = child.val();
       if (o.estado !== 'cobrada' && o.estado !== 'cancelada' && o.estado !== 'cuenta-enviada' && !o.esGeneral) {
-        // Solo mostrar si tiene items pendientes de entregar
-        const items = toArray(o.items); o.items = items; const tienePendientes = items.length > 0 && items.some(i => !i.entregado);
+        // El buffet NO se prepara en cocina: descartar esos items aunque hayan
+        // llegado al nodo 'ordenes' (órdenes antiguas o dispositivos desactualizados).
+        // Guardamos el índice original (_origIdx) para marcar "entregado" en el
+        // lugar correcto de Firebase, aunque hayamos filtrado items intermedios.
+        let items = toArray(o.items)
+          .map((i, idx) => { i._origIdx = idx; return i; })
+          .filter(i => (i.cat||'').toLowerCase() !== 'buffet' && i.tipo !== 'general');
+        o.items = items;
+        const tienePendientes = items.length > 0 && items.some(i => !i.entregado);
         if (tienePendientes) {
           ordenes[child.key] = o;
         }
@@ -496,7 +503,7 @@ function buildCard(o) {
             <div class="item-nombre">${item.nombre}</div>
           </div>
           <div class="item-qty">x${item.qty}</div>
-          <button style="padding:6px 14px;background:var(--green);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0" onclick="marcarListoCocina('${o.id}',${allItems.indexOf(item)})">LISTO</button>
+          <button style="padding:6px 14px;background:var(--green);color:#000;border:none;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;flex-shrink:0" onclick="marcarListoCocina('${o.id}',${item._origIdx !== undefined ? item._origIdx : allItems.indexOf(item)})">LISTO</button>
         </div>`).join('')}
     </div>
     <div class="card-footer">
