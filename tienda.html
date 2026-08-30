@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Tienda — Venta Directa</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- QZ Tray: puente para enviar comandos ESC/POS a la impresora GHIA (abrir cajón, imprimir sin diálogo) -->
+<script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
 <style>
   :root{--bg:#0a0d10;--surface:#12161c;--surface2:#181c24;--border:#222830;--accent:#06b6d4;--accent2:#ef4444;--green:#22c55e;--amber:#f59e0b;--text:#e8eaf0;--muted:#5a6270;--radius:12px}
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -247,7 +249,7 @@
   <div class="modal-box" style="text-align:center">
     <div style="font-size:48px;margin-bottom:12px">🖨</div>
     <div class="modal-title" style="color:var(--green)">¡COBRO EXITOSO!</div>
-    <div class="modal-sub" style="font-size:14px">¿Deseas imprimir el ticket?</div>
+    <div class="modal-sub" style="font-size:14px">💰 El cajón se abrió.<br>¿Deseas imprimir el ticket?</div>
     <button class="modal-btn modal-btn-green" onclick="imprimirTicket()">🖨 SÍ, IMPRIMIR</button>
     <button class="modal-btn modal-btn-outline" onclick="noImprimir()">NO, GRACIAS</button>
   </div>
@@ -270,6 +272,129 @@ let mesaSeleccionada=null;
 let mesasOcupadas={};
 let ultimoRecibo=null;
 let productosFrecuentes=[];
+
+// ─── QZ TRAY (misma dinámica que el módulo Caja) ─────────
+let qzListo=false;          // true cuando QZ Tray está conectado
+let impresoraGHIA=null;     // nombre de la impresora en Windows (localStorage)
+
+// Redondea a centavos para evitar errores de punto flotante.
+function aCentavos(n){ return Math.round((parseFloat(n)||0)*100); }
+
+// Intenta conectar con QZ Tray. Si no está, se usa impresión del navegador.
+async function initQZ(){
+  if(typeof qz==='undefined'){ qzListo=false; return; }
+  try{
+    qz.security.setCertificatePromise(function(resolve){ resolve(); });
+    qz.security.setSignaturePromise(function(){ return function(resolve){ resolve(); }; });
+    if(!qz.websocket.isActive()){ await qz.websocket.connect(); }
+    qzListo=true;
+    // Comparte la misma impresora configurada en Caja.
+    impresoraGHIA=localStorage.getItem('impresoraCaja')||null;
+    if(!impresoraGHIA){
+      try{
+        impresoraGHIA=await qz.printers.getDefault();
+        if(impresoraGHIA) localStorage.setItem('impresoraCaja',impresoraGHIA);
+      }catch(e){}
+    }
+  }catch(e){
+    qzListo=false;
+    console.log('QZ Tray no disponible, se usará impresión del navegador.');
+  }
+}
+
+// Permite configurar/cambiar la impresora manualmente (comparte con Caja).
+window.configurarImpresora=async function(){
+  if(!qzListo){ alert('QZ Tray no está conectado. Verifica que esté instalado y en ejecución.'); return; }
+  try{
+    var lista=await qz.printers.find();
+    var actual=impresoraGHIA||'';
+    var msg='Impresoras detectadas:\n\n'+lista.map(function(p,i){return (i+1)+'. '+p;}).join('\n')+'\n\nEscribe el nombre EXACTO de la impresora GHIA:';
+    var nombre=prompt(msg,actual);
+    if(nombre && nombre.trim()){
+      impresoraGHIA=nombre.trim();
+      localStorage.setItem('impresoraCaja',impresoraGHIA);
+      alert('Impresora guardada: '+impresoraGHIA);
+    }
+  }catch(e){ alert('No se pudieron listar las impresoras: '+e); }
+}
+
+// Abre ÚNICAMENTE el cajón de dinero (sin imprimir). Igual que en Caja.
+async function abrirCajonQZ(){
+  if(!qzListo || !impresoraGHIA) return false;
+  try{
+    var cfg=qz.configs.create(impresoraGHIA);
+    var data=[];
+    data.push('\x1B\x40');            // ESC @  (reset, necesario para el comando crudo)
+    data.push('\x1B\x70\x00\x19\xFA'); // ESC p  (abrir cajón por RJ11)
+    await qz.print(cfg,[{type:'raw',format:'command',flavor:'plain',data:data.join('')}]);
+    return true;
+  }catch(e){ console.log('Error al abrir el cajón por QZ:',e); return false; }
+}
+
+// Construye el ticket de tienda (58mm, 32 caracteres) e imprime por QZ.
+function construirTicketTiendaTexto(r){
+  var W=32;
+  function linea(izq,der){
+    izq=String(izq); der=String(der);
+    var espacio=W-izq.length-der.length;
+    if(espacio<1){ izq=izq.slice(0,W-der.length-1); espacio=1; }
+    return izq+' '.repeat(espacio)+der+'\n';
+  }
+  function centro(txt){
+    txt=String(txt);
+    if(txt.length>=W) return txt.slice(0,W)+'\n';
+    return ' '.repeat(Math.floor((W-txt.length)/2))+txt+'\n';
+  }
+  var f=new Date(r.fecha);
+  var t='';
+  t+=centro('QUINTA AURE');
+  t+=centro('TIENDA');
+  t+=f.toLocaleDateString('es-MX')+' '+f.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+'\n';
+  t+='-'.repeat(W)+'\n';
+  r.items.forEach(function(i){ t+=linea((i.nombre||'Producto')+' x'+(i.qty||1),'$'+((i.precio||0)*(i.qty||1))); });
+  t+='-'.repeat(W)+'\n';
+  t+=linea('TOTAL','$'+(r.total||0));
+  t+='Pago: '+(r.metodo||'')+'\n';
+  t+='\n';
+  t+=centro('¡Gracias por su compra!');
+  t+='\n\n\n';
+  return t;
+}
+
+// Ruta del logo que se imprime en la parte superior del ticket.
+const LOGO_TICKET='Logo vector.jpeg';
+
+// Arma el trabajo de impresión del ticket de tienda. Si conLogo=true,
+// antepone el logo como imagen (QZ lo convierte a raster ESC/POS).
+function construirTrabajoTicketTienda(r, conLogo){
+  const data=['\x1B\x40']; // ESC @ (reset)
+  if(conLogo){
+    data.push('\x1B\x61\x01'); // ESC a 1 (centrar)
+    data.push({ type:'raw', format:'image', flavor:'file', data:LOGO_TICKET,
+                options:{ language:'escpos', dotDensity:'double' } });
+    data.push('\x1B\x61\x00'); // ESC a 0 (alinear izquierda)
+  }
+  data.push(construirTicketTiendaTexto(r)); // contenido
+  data.push('\x1D\x56\x00');                // GS V 0 (corte)
+  return data;
+}
+
+// Imprime el ticket de tienda vía QZ. El cajón NO se abre aquí (ya se abrió al
+// confirmar el cobro). Si el logo falla, reintenta sin logo para que el ticket salga.
+async function imprimirTicketTiendaQZ(r){
+  if(!qzListo || !impresoraGHIA) return false;
+  const cfg=qz.configs.create(impresoraGHIA);
+  try{
+    await qz.print(cfg, construirTrabajoTicketTienda(r, true));
+    return true;
+  }catch(e){
+    console.log('No se pudo imprimir con logo, reintentando sin logo:',e);
+    try{
+      await qz.print(cfg, construirTrabajoTicketTienda(r, false));
+      return true;
+    }catch(e2){ console.log('Error al imprimir por QZ:',e2); return false; }
+  }
+}
 
 function showToast(msg,type){const el=document.getElementById('toast');el.textContent=msg;el.className='toast '+(type||'info')+' show';setTimeout(()=>el.classList.remove('show'),3000);}
 window.cerrarModal=function(id){document.getElementById(id).classList.remove('open');}
@@ -475,14 +600,17 @@ window.selectPagoTienda=function(metodo){
 
 window.calcularCambioTienda=function(){
   const items=Object.values(carrito);
-  const total=items.reduce((s,i)=>s+i.precio*i.qty,0);
-  const monto=parseFloat(document.getElementById('montoRecibido').value)||0;
+  const total=aCentavos(items.reduce((s,i)=>s+i.precio*i.qty,0));
+  const monto=aCentavos(document.getElementById('montoRecibido').value);
   const cambio=monto-total;
-  if(monto>0 && cambio>=0){
-    document.getElementById('cambioDisplay').style.display='block';
-    document.getElementById('cambioMonto').textContent='$'+cambio;
+  const cd=document.getElementById('cambioDisplay');
+  if(monto<=0){ cd.style.display='none'; return; }
+  cd.style.display='block';
+  if(cambio>=0){
+    // Reconstruir el span (pudo sobreescribirse con un mensaje de "faltan $").
+    cd.innerHTML='CAMBIO: <span id="cambioMonto" style="color:var(--green)">$'+(cambio/100)+'</span>';
   } else {
-    document.getElementById('cambioDisplay').style.display='none';
+    cd.innerHTML='<span style="color:var(--accent2);font-size:14px">⚠ Faltan $'+(Math.abs(cambio)/100)+' (total $'+(total/100)+')</span>';
   }
 }
 
@@ -493,6 +621,23 @@ window.confirmarCobro=async function(){
   if(!db){showToast('Sin conexión','error');return;}
 
   const total=items.reduce((s,i)=>s+i.precio*i.qty,0);
+
+  // Validar monto recibido cuando el pago es en efectivo (igual que Caja).
+  if(pagoSeleccionado==='efectivo'){
+    const totalCent=aCentavos(total);
+    const recibidoCent=aCentavos(document.getElementById('montoRecibido').value);
+    if(recibidoCent<totalCent){
+      const inp=document.getElementById('montoRecibido');
+      inp.style.borderColor='var(--accent2)';
+      inp.focus();
+      const cd=document.getElementById('cambioDisplay');
+      cd.style.display='block';
+      cd.innerHTML='<span style="color:var(--accent2);font-size:14px">⚠ El monto recibido es menor al total ($'+total+')</span>';
+      setTimeout(function(){inp.style.borderColor='';},1500);
+      return;
+    }
+  }
+
   const cuentaItems=items.map(i=>({nombre:i.nombre,emoji:'🛒',precio:i.precio,qty:i.qty}));
 
   try{
@@ -519,35 +664,13 @@ window.confirmarCobro=async function(){
     carrito={};
     renderCarrito();
 
-    // Abrir caja registradora (enviar comando ESC/POS)
-    abrirCajaRegistradora();
+    // Abrir el cajón AL COBRAR vía QZ Tray (misma dinámica que Caja),
+    // sin necesidad de imprimir el ticket.
+    abrirCajonQZ();
 
-    // Show print confirmation modal
+    // Mostrar modal por si además se desea imprimir el ticket.
     document.getElementById('modalImprimir').classList.add('open');
   }catch(e){showToast('Error: '+e.message,'error');console.error(e);}
-}
-
-// --- ABRIR CAJA REGISTRADORA ---
-function abrirCajaRegistradora(){
-  // Método 1: Intentar abrir la caja mediante un iframe de impresión con comando ESC/POS
-  // El comando estándar para abrir cajón es: ESC p 0 25 250
-  // En la mayoría de impresoras POS, al imprimir se abre la caja automáticamente.
-  // Aquí forzamos una "impresión vacía" que activa el cajón.
-  try{
-    const iframe=document.createElement('iframe');
-    iframe.style.display='none';
-    document.body.appendChild(iframe);
-    const doc=iframe.contentDocument||iframe.contentWindow.document;
-    doc.open();
-    // Carácter ESC/POS para abrir cajón: chr(27)+chr(112)+chr(0)+chr(25)+chr(250)
-    doc.write('<html><body><pre style="font-size:0">\x1Bp\x00\x19\xFA</pre></body></html>');
-    doc.close();
-    iframe.contentWindow.print();
-    setTimeout(()=>document.body.removeChild(iframe),1000);
-  }catch(e){
-    // Si no funciona, no hacer nada - la caja se abrirá con el ticket si se imprime
-    console.log('Caja registradora: se abrirá con la impresión del ticket');
-  }
 }
 
 // --- AGREGAR A MESA ---
@@ -590,11 +713,24 @@ window.confirmarMesa=async function(){
 }
 
 // --- IMPRIMIR TICKET (50mm) ---
-window.imprimirTicket=function(){
+// Intenta imprimir por QZ Tray (igual que Caja). Si no está disponible,
+// cae al diálogo de impresión del navegador. El cajón NO se reabre aquí
+// porque ya se abrió al confirmar el cobro.
+window.imprimirTicket=async function(){
   if(!ultimoRecibo){cerrarModal('modalImprimir');return;}
   const r=ultimoRecibo;
+
+  const okQZ=await imprimirTicketTiendaQZ(r);
+  if(okQZ){
+    cerrarModal('modalImprimir');
+    showToast('Ticket enviado a impresora','success');
+    return;
+  }
+
+  // Respaldo: impresión del navegador (50mm)
   const fecha=new Date(r.fecha);
   let html='<div style="font-family:\'Courier New\',monospace;font-size:10px;line-height:1.3;color:black;width:50mm;padding:2mm">';
+  html+='<div style="text-align:center;margin-bottom:4px"><img src="Logo vector.jpeg" alt="Quinta Aure" style="width:32mm;max-width:90%;height:auto;object-fit:contain"></div>';
   html+='<div style="text-align:center;font-weight:bold;font-size:12px;margin-bottom:2px">QUINTA AURE</div>';
   html+='<div style="text-align:center;font-size:9px;margin-bottom:4px">TIENDA</div>';
   html+='<div style="text-align:center;font-size:9px;margin-bottom:6px">'+fecha.toLocaleDateString('es-MX')+' '+fecha.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+'</div>';
@@ -627,6 +763,7 @@ window.noImprimir=function(){
 cargarFrecuentes();
 renderCarrito();
 initFirebase();
+initQZ(); // conectar con QZ Tray (impresora GHIA + cajón), igual que Caja
 </script>
 </body>
 </html>

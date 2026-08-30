@@ -503,24 +503,43 @@ async function abrirCajonQZ(){
 }
 
 // Imprime el ticket vía QZ Tray. Si abrirCajon=true, agrega el comando ESC p.
+// Ruta del logo que se imprime en la parte superior del ticket.
+var LOGO_TICKET='Logo vector.jpeg';
+
+// Arma el trabajo de impresión. Si conLogo=true, antepone el logo como imagen.
+function construirTrabajoTicket(c, abrirCajon, conLogo){
+  var data=['\x1B\x40']; // ESC @ (reset)
+  if(conLogo){
+    data.push('\x1B\x61\x01'); // ESC a 1 (centrar)
+    data.push({ type:'raw', format:'image', flavor:'file', data:LOGO_TICKET,
+                options:{ language:'escpos', dotDensity:'double' } });
+    data.push('\x1B\x61\x00'); // ESC a 0 (alinear izquierda)
+  }
+  data.push(construirTicketTexto(c)); // contenido del ticket
+  data.push('\x1D\x56\x00');          // GS V 0 (corte de papel)
+  if(abrirCajon){
+    data.push('\x1B\x70\x00\x19\xFA'); // ESC p (abrir cajón)
+  }
+  return data;
+}
+
 async function imprimirTicketQZ(c, abrirCajon){
   if(!qzListo || !impresoraGHIA) return false;
+  var cfg=qz.configs.create(impresoraGHIA);
+  // Intento 1: con logo. Si falla (ruta/formato de imagen), reintenta sin logo
+  // para que el ticket SIEMPRE salga.
   try{
-    var cfg=qz.configs.create(impresoraGHIA);
-    var data=[];
-    // Inicializar impresora
-    data.push('\x1B\x40');              // ESC @  (reset)
-    data.push(construirTicketTexto(c)); // contenido del ticket
-    data.push('\x1D\x56\x00');          // GS V 0 (corte de papel)
-    if(abrirCajon){
-      // ESC p m t1 t2 → abre el cajón conectado por RJ11
-      data.push('\x1B\x70\x00\x19\xFA');
-    }
-    await qz.print(cfg,[{type:'raw',format:'command',flavor:'plain',data:data.join('')}]);
+    await qz.print(cfg, construirTrabajoTicket(c, abrirCajon, true));
     return true;
   }catch(e){
-    console.log('Error al imprimir por QZ:',e);
-    return false;
+    console.log('No se pudo imprimir con logo, reintentando sin logo:',e);
+    try{
+      await qz.print(cfg, construirTrabajoTicket(c, abrirCajon, false));
+      return true;
+    }catch(e2){
+      console.log('Error al imprimir por QZ:',e2);
+      return false;
+    }
   }
 }
 
@@ -609,7 +628,7 @@ function renderDetalle(id){
   document.getElementById('detalleContent').classList.add('show');
   var items=toArr(c.items);
   var recibo='<div class="recibo-header">';
-  recibo+='<img class="recibo-logo" src="Logo.png" alt="Quinta Aure">';
+  recibo+='<img class="recibo-logo" src="Logo vector.jpeg" alt="Quinta Aure">';
   recibo+='<div class="recibo-restaurante">QUINTA AURE</div>';
   recibo+='<div class="recibo-sub">Sistema de Punto de Venta</div>';
   recibo+='<div class="recibo-mesa">MESA '+c.mesa+'</div>';
@@ -702,17 +721,27 @@ window.selectPago=function(metodo){
   actualizarBtnCobrar();
 }
 
+// Redondea a centavos para evitar errores de punto flotante (ej: 100.00000001).
+function aCentavos(n){ return Math.round((parseFloat(n)||0)*100); }
+
 window.calcularCambio=function(){
   var c=cuentas[cuentaSeleccionada];
   if(!c) return;
-  var monto=parseFloat(document.getElementById('montoRecibido').value)||0;
-  var total=c.total||0;
+  var cd=document.getElementById('cambioDisplay');
+  var monto=aCentavos(document.getElementById('montoRecibido').value);
+  var total=aCentavos(c.total||0);
   var cambio=monto-total;
-  if(monto>0 && cambio>=0){
-    document.getElementById('cambioDisplay').style.display='block';
-    document.getElementById('cambioMonto').textContent='$'+cambio;
+  if(monto<=0){
+    cd.style.display='none';
+    return;
+  }
+  cd.style.display='block';
+  if(cambio>=0){
+    // Reconstruir el contenido para restaurar el span (pudo haberse sobreescrito
+    // por el mensaje de "monto bajo") y mostrar el cambio correcto.
+    cd.innerHTML='CAMBIO: <span id="cambioMonto" style="color:var(--green)">$'+(cambio/100)+'</span>';
   } else {
-    document.getElementById('cambioDisplay').style.display='none';
+    cd.innerHTML='<span style="color:var(--accent2);font-size:14px">⚠ Faltan $'+(Math.abs(cambio)/100)+' (total $'+(total/100)+')</span>';
   }
 }
 
@@ -730,15 +759,15 @@ window.cobrar=async function(){
   if(!c||c.estado==='cobrada') return;
   // Validar monto recibido cuando el pago es en efectivo
   if(pagoMetodo==='efectivo'){
-    var total=c.total||0;
-    var recibido=parseFloat(document.getElementById('montoRecibido').value)||0;
-    if(recibido<total){
+    var totalCent=aCentavos(c.total||0);
+    var recibidoCent=aCentavos(document.getElementById('montoRecibido').value);
+    if(recibidoCent<totalCent){
       var inp=document.getElementById('montoRecibido');
       inp.style.borderColor='var(--accent2)';
       inp.focus();
       var cd=document.getElementById('cambioDisplay');
       cd.style.display='block';
-      cd.innerHTML='<span style="color:var(--accent2);font-size:14px">⚠ El monto recibido es menor al total ($'+total+')</span>';
+      cd.innerHTML='<span style="color:var(--accent2);font-size:14px">⚠ El monto recibido es menor al total ($'+(totalCent/100)+')</span>';
       setTimeout(function(){inp.style.borderColor='';},1500);
       return;
     }
