@@ -83,6 +83,8 @@
   .recibo-item-nombre{flex:1}
   .recibo-item-qty{color:var(--muted);font-size:12px;margin:0 12px}
   .recibo-item-precio{font-weight:500}
+  .recibo-item-del{margin-left:10px;background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);color:var(--red);border-radius:6px;padding:3px 8px;font-size:13px;cursor:pointer;line-height:1;transition:background .15s}
+  .recibo-item-del:hover{background:rgba(239,68,68,.22)}
   .recibo-totales{border-top:1px dashed var(--border);padding-top:14px}
   .recibo-linea{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:var(--muted)}
   .recibo-linea.total{font-size:16px;font-weight:700;color:var(--text);padding-top:10px;border-top:1px solid var(--border);margin-top:6px}
@@ -166,6 +168,7 @@
     .recibo-item-nombre{font-size:10px}
     .recibo-item-qty{font-size:9px;color:#333}
     .recibo-item-precio{font-size:10px;font-weight:700}
+    .recibo-item-del{display:none !important;visibility:hidden !important}
     .recibo-totales{border-top:1px dashed #000;padding-top:4px;margin-top:4px}
     .recibo-linea{font-size:10px;color:#333;padding:2px 0}
     .recibo-linea.total{font-size:13px;font-weight:700;color:black;border-top:1px solid #000;padding-top:4px;margin-top:4px}
@@ -327,7 +330,7 @@
   <div class="modal-box" style="max-width:380px;text-align:center">
     <div style="font-size:48px;margin-bottom:12px">🖨</div>
     <div class="modal-title" style="color:var(--green)">¡COBRO EXITOSO!</div>
-    <div class="modal-sub" style="font-size:14px;text-align:center">¿Deseas imprimir el ticket?</div>
+    <div class="modal-sub" style="font-size:14px;text-align:center">💰 El cajón se abrió.<br>¿Deseas imprimir el ticket?</div>
     <button class="modal-btn modal-btn-green" onclick="imprimirYCerrar()">🖨 SÍ, IMPRIMIR</button>
     <button class="modal-btn modal-btn-outline" onclick="noImprimirCaja()">NO, GRACIAS</button>
   </div>
@@ -480,6 +483,25 @@ function construirTicketTexto(c){
   return t;
 }
 
+// Abre ÚNICAMENTE el cajón de dinero (sin imprimir ningún ticket).
+// Envía solo el comando ESC/POS de apertura de cajón vía QZ Tray.
+async function abrirCajonQZ(){
+  if(!qzListo || !impresoraGHIA) return false;
+  try{
+    var cfg=qz.configs.create(impresoraGHIA);
+    var data=[];
+    // Inicializar impresora (necesario para que procese el comando crudo).
+    data.push('\x1B\x40');           // ESC @  (reset)
+    // ESC p m t1 t2 → abre el cajón conectado por RJ11
+    data.push('\x1B\x70\x00\x19\xFA');
+    await qz.print(cfg,[{type:'raw',format:'command',flavor:'plain',data:data.join('')}]);
+    return true;
+  }catch(e){
+    console.log('Error al abrir el cajón por QZ:',e);
+    return false;
+  }
+}
+
 // Imprime el ticket vía QZ Tray. Si abrirCajon=true, agrega el comando ESC p.
 async function imprimirTicketQZ(c, abrirCajon){
   if(!qzListo || !impresoraGHIA) return false;
@@ -593,11 +615,15 @@ function renderDetalle(id){
   recibo+='<div class="recibo-mesa">MESA '+c.mesa+'</div>';
   recibo+='<div class="recibo-datos">'+formatDate(c.timestamp)+' '+formatTime(c.timestamp)+'<br>Folio: '+id.slice(-8).toUpperCase()+'</div>';
   recibo+='</div><div class="recibo-items">';
-  items.forEach(function(i){
+  var puedeEditar=c.estado!=='cobrada';
+  items.forEach(function(i,idx){
     recibo+='<div class="recibo-item">';
     recibo+='<span class="recibo-item-nombre">'+(i.emoji||'')+' '+(i.nombre||'Producto')+'</span>';
     recibo+='<span class="recibo-item-qty">x'+(i.qty||1)+'</span>';
     recibo+='<span class="recibo-item-precio">$'+((i.precio||0)*(i.qty||1))+'</span>';
+    if(puedeEditar){
+      recibo+='<button class="recibo-item-del" title="Eliminar producto" onclick="eliminarItem('+idx+')">🗑</button>';
+    }
     recibo+='</div>';
   });
   recibo+='</div><div class="recibo-totales">';
@@ -622,6 +648,40 @@ function renderDetalle(id){
   } else {
     btn.disabled=!pagoMetodo;btn.textContent='COBRAR';btn.style.background='var(--green)';
   }
+}
+
+// Elimina un producto (línea) de la cuenta pendiente y recalcula totales.
+// Útil cuando por fallos de internet una orden se envió por duplicado.
+window.eliminarItem=async function(idx){
+  var c=cuentas[cuentaSeleccionada];
+  if(!c) return;
+  if(c.estado==='cobrada'){ return; }
+  var items=toArr(c.items);
+  if(idx<0||idx>=items.length) return;
+  var it=items[idx];
+  var nombre=(it&&it.nombre)?it.nombre:'este producto';
+  if(!confirm('¿Eliminar "'+nombre+'" de la cuenta?')) return;
+
+  // Quitar el ítem seleccionado
+  items.splice(idx,1);
+
+  // Recalcular subtotal a partir de los ítems restantes
+  var subtotal=0;
+  items.forEach(function(i){ subtotal+=((i.precio||0)*(i.qty||1)); });
+  var propina=c.propina||0;
+  var total=subtotal+propina;
+
+  try{
+    await update(ref(db,'caja/'+cuentaSeleccionada),{
+      items:items,
+      subtotal:subtotal,
+      total:total
+    });
+    // Actualización local inmediata (el listener de Firebase también refrescará)
+    c.items=items; c.subtotal=subtotal; c.total=total;
+    renderDetalle(cuentaSeleccionada);
+    renderCola();
+  }catch(e){ alert('No se pudo eliminar el producto. Revisa la conexión.'); }
 }
 
 window.selectPago=function(metodo){
@@ -701,9 +761,10 @@ window.cobrar=async function(){
   }catch(e){}
   // El total del día lo recalcula el listener de cargarResumenDiario() desde Firebase.
   // No sumamos manualmente aquí para evitar doble conteo.
-  // El cajón se abre al imprimir el ticket desde el modal (imprimirYCerrar),
-  // usando el comando ESC/POS vía QZ Tray. La pre-cuenta NO abre el cajón.
-  // Mostrar modal de confirmación para imprimir ticket
+  // Abrir el cajón AL COBRAR, sin necesidad de imprimir el ticket.
+  // Usa el comando ESC/POS de apertura vía QZ Tray. La pre-cuenta NO abre el cajón.
+  abrirCajonQZ();
+  // Mostrar modal por si además se desea imprimir el ticket.
   document.getElementById('modalImprimirTicket').classList.add('open');
 }
 
@@ -736,12 +797,13 @@ window.imprimirRecibo=async function(){
   if(!ok) window.print();
 }
 
-// Al confirmar el cobro en el modal: imprime el ticket Y abre el cajón.
+// Al confirmar el cobro en el modal: imprime el ticket.
+// El cajón ya se abrió al pulsar COBRAR, así que aquí NO se vuelve a abrir.
 window.imprimirYCerrar=async function(){
   cerrarModal('modalImprimirTicket');
   var c=cuentas[cuentaSeleccionada];
   var ok=false;
-  if(c) ok=await imprimirTicketQZ(c,true); // true = abrir cajón
+  if(c) ok=await imprimirTicketQZ(c,false); // false = no reabrir el cajón
   if(!ok) setTimeout(function(){window.print();},200);
 }
 

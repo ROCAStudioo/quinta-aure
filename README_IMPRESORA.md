@@ -9,8 +9,9 @@ El módulo de caja (`caja.html`) maneja dos impresiones distintas:
 
 - **Pre-cuenta** (botón "🧾 IMPRIMIR PRE-CUENTA"): imprime el ticket para que el
   cliente vea cuánto debe. **NO abre el cajón.**
-- **Cobro** (botón "COBRAR" → "SÍ, IMPRIMIR"): imprime el ticket **y abre el cajón**
-  de dinero mediante el comando ESC/POS `ESC p`.
+- **Cobro** (botón "COBRAR"): **abre el cajón** de dinero de inmediato mediante el
+  comando ESC/POS `ESC p`, sin necesidad de imprimir. Después aparece un aviso por si
+  además quieres imprimir el ticket ("SÍ, IMPRIMIR"), que ya **no** vuelve a abrir el cajón.
 
 Para lograr esta separación (que la pre-cuenta no abra el cajón y el cobro sí) se
 usa **QZ Tray**, un pequeño programa puente que envía comandos crudos a la
@@ -67,8 +68,9 @@ automática **desactivada** (que el cajón se abra solo cuando el sistema lo pid
    cliente y que vea el total. **El cajón NO se abre.**
 4. Elige el método de pago (en efectivo, escribe el monto recibido; el sistema
    calcula el cambio y no deja cobrar si el monto es menor al total).
-5. Da clic en **"COBRAR"**.
-6. En el aviso, da **"SÍ, IMPRIMIR"**: se imprime el ticket final **y se abre el cajón**.
+5. Da clic en **"COBRAR"**: **el cajón se abre en ese momento** (no hace falta imprimir).
+6. En el aviso, si quieres el comprobante, da **"SÍ, IMPRIMIR"**: se imprime el ticket
+   final (el cajón ya quedó abierto, no se vuelve a abrir). Si no lo necesitas, da **"NO, GRACIAS"**.
 
 ## Si algo no funciona
 
@@ -77,7 +79,8 @@ automática **desactivada** (que el cajón se abra solo cuando el sistema lo pid
   encendido (ícono en la bandeja) y que la impresora esté bien seleccionada
   (botón "🖨 Impresora").
 - **El cajón no abre al cobrar:** puede que tu cajón use el otro pin. En
-  `caja.html`, dentro de la función `imprimirTicketQZ`, cambia el comando:
+  `caja.html`, cambia el comando en las funciones `abrirCajonQZ` (apertura al cobrar)
+  y `imprimirTicketQZ` (apertura junto con el ticket, si se usa):
   - Actual: `\x1B\x70\x00\x19\xFA`  (pin 0)
   - Alternativa: `\x1B\x70\x01\x19\xFA`  (pin 1)
 - **El cajón se abre también con la pre-cuenta:** falta desactivar la apertura
