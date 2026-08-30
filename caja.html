@@ -504,7 +504,7 @@ async function abrirCajonQZ(){
 
 // Imprime el ticket vía QZ Tray. Si abrirCajon=true, agrega el comando ESC p.
 // Ruta del logo que se imprime en la parte superior del ticket.
-var LOGO_TICKET='Logo vector.jpeg';
+var LOGO_TICKET='Logo.png';
 // Ancho del logo impreso, en PUNTOS de la impresora (203 DPI → 1 cm ≈ 80 pts).
 // QZ ignora el escalado con imágenes 'file', así que pre-escalamos el logo
 // nosotros mismos con un <canvas> a este ancho exacto en píxeles.
@@ -657,7 +657,7 @@ function renderDetalle(id){
   document.getElementById('detalleContent').classList.add('show');
   var items=toArr(c.items);
   var recibo='<div class="recibo-header">';
-  recibo+='<img class="recibo-logo" src="Logo vector.jpeg" alt="Quinta Aure">';
+  recibo+='<img class="recibo-logo" src="Logo.png" alt="Quinta Aure">';
   recibo+='<div class="recibo-restaurante">QUINTA AURE</div>';
   recibo+='<div class="recibo-sub">Sistema de Punto de Venta</div>';
   recibo+='<div class="recibo-mesa">MESA '+c.mesa+'</div>';

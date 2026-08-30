@@ -362,7 +362,7 @@ function construirTicketTiendaTexto(r){
 }
 
 // Ruta del logo que se imprime en la parte superior del ticket.
-const LOGO_TICKET='Logo vector.jpeg';
+const LOGO_TICKET='Logo.png';
 // Ancho del logo impreso, en PUNTOS de la impresora (203 DPI → 1 cm ≈ 80 pts).
 // QZ ignora el escalado con imágenes 'file', así que pre-escalamos el logo
 // nosotros mismos con un <canvas> a este ancho exacto en píxeles.
@@ -760,7 +760,7 @@ window.imprimirTicket=async function(){
   // Respaldo: impresión del navegador (50mm)
   const fecha=new Date(r.fecha);
   let html='<div style="font-family:\'Courier New\',monospace;font-size:10px;line-height:1.3;color:black;width:50mm;padding:2mm">';
-  html+='<div style="text-align:center;margin-bottom:4px"><img src="Logo vector.jpeg" alt="Quinta Aure" style="width:32mm;max-width:90%;height:auto;object-fit:contain"></div>';
+  html+='<div style="text-align:center;margin-bottom:4px"><img src="Logo.png" alt="Quinta Aure" style="width:32mm;max-width:90%;height:auto;object-fit:contain"></div>';
   html+='<div style="text-align:center;font-weight:bold;font-size:12px;margin-bottom:2px">QUINTA AURE</div>';
   html+='<div style="text-align:center;font-size:9px;margin-bottom:4px">TIENDA</div>';
   html+='<div style="text-align:center;font-size:9px;margin-bottom:6px">'+fecha.toLocaleDateString('es-MX')+' '+fecha.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})+'</div>';
