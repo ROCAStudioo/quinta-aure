@@ -363,17 +363,43 @@ function construirTicketTiendaTexto(r){
 
 // Ruta del logo que se imprime en la parte superior del ticket.
 const LOGO_TICKET='Logo vector.jpeg';
+// Ancho del logo impreso, en PUNTOS de la impresora (203 DPI → 1 cm ≈ 80 pts).
+// QZ ignora el escalado con imágenes 'file', así que pre-escalamos el logo
+// nosotros mismos con un <canvas> a este ancho exacto en píxeles.
+const LOGO_ANCHO_PTS=80;   // ≈ 1 cm
+let _logoDataUrl=null;     // cache del logo ya escalado (data URL)
 
-// Arma el trabajo de impresión del ticket de tienda. Si conLogo=true,
-// antepone el logo como imagen (QZ lo convierte a raster ESC/POS).
-function construirTrabajoTicketTienda(r, conLogo){
+// Carga el logo y lo redimensiona a LOGO_ANCHO_PTS de ancho (alto proporcional)
+// sobre fondo blanco. Devuelve un data URL PNG listo para imprimir.
+function prepararLogo(){
+  if(_logoDataUrl) return Promise.resolve(_logoDataUrl);
+  return new Promise((resolve,reject)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const w=LOGO_ANCHO_PTS;
+      const h=Math.max(1,Math.round(img.height*(w/img.width)));
+      const canvas=document.createElement('canvas');
+      canvas.width=w; canvas.height=h;
+      const ctx=canvas.getContext('2d');
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,w,h); // fondo blanco
+      ctx.drawImage(img,0,0,w,h);
+      _logoDataUrl=canvas.toDataURL('image/png');
+      resolve(_logoDataUrl);
+    };
+    img.onerror=(e)=>reject(e);
+    img.src=LOGO_TICKET;
+  });
+}
+
+// Arma el trabajo de impresión del ticket de tienda. Si logoUrl viene, antepone
+// el logo (ya escalado por canvas).
+function construirTrabajoTicketTienda(r, logoUrl){
   const data=['\x1B\x40']; // ESC @ (reset)
-  if(conLogo){
+  if(logoUrl){
     data.push('\x1B\x61\x01'); // ESC a 1 (centrar)
-    // A 203 DPI (impresora de 58mm): 1 cm ≈ 80 puntos.
-    // width:80 → el logo mide ~1 cm de ancho. Alto proporcional automático.
-    data.push({ type:'raw', format:'image', flavor:'file', data:LOGO_TICKET,
-                options:{ language:'escpos', dotDensity:'single', scale:false, size:{ width:80, height:0 } } });
+    data.push({ type:'raw', format:'image', flavor:'base64',
+                data:logoUrl.split(',')[1],
+                options:{ language:'escpos', dotDensity:'single' } });
     data.push('\x1B\x61\x00'); // ESC a 0 (alinear izquierda)
   }
   data.push(construirTicketTiendaTexto(r)); // contenido
@@ -386,13 +412,15 @@ function construirTrabajoTicketTienda(r, conLogo){
 async function imprimirTicketTiendaQZ(r){
   if(!qzListo || !impresoraGHIA) return false;
   const cfg=qz.configs.create(impresoraGHIA);
+  let logoUrl=null;
+  try{ logoUrl=await prepararLogo(); }catch(e){ console.log('No se pudo preparar el logo:',e); }
   try{
-    await qz.print(cfg, construirTrabajoTicketTienda(r, true));
+    await qz.print(cfg, construirTrabajoTicketTienda(r, logoUrl));
     return true;
   }catch(e){
     console.log('No se pudo imprimir con logo, reintentando sin logo:',e);
     try{
-      await qz.print(cfg, construirTrabajoTicketTienda(r, false));
+      await qz.print(cfg, construirTrabajoTicketTienda(r, null));
       return true;
     }catch(e2){ console.log('Error al imprimir por QZ:',e2); return false; }
   }
