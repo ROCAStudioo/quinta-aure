@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Caja — Sistema de Cobros</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<!-- QZ Tray: puente para enviar comandos ESC/POS a la impresora GHIA (abrir cajón, imprimir sin diálogo) -->
+<script src="https://cdn.jsdelivr.net/npm/qz-tray@2.2.4/qz-tray.js"></script>
 <style>
   :root {
     --bg: #0a0d10;
@@ -219,6 +221,7 @@
         <button class="btn-action" onclick="abrirHistorial()">📋 Historial</button>
         <button class="btn-action" onclick="abrirTopVentas()">🏆 Top Ventas</button>
         <button class="btn-action" onclick="abrirLiberarMesas()">🪑 Liberar Mesas</button>
+        <button class="btn-action" onclick="configurarImpresora()" title="Elegir la impresora GHIA para tickets y cajón">🖨 Impresora</button>
         <button class="btn-action danger" onclick="abrirLimpiar()">🗑 Limpiar</button>
       </div>
     </div>
@@ -257,7 +260,7 @@
           </div>
         </div>
         <button class="btn-cobrar" id="btnCobrar" onclick="cobrar()" disabled>COBRAR</button>
-        <button class="btn-imprimir" onclick="imprimirRecibo()">🖨 IMPRIMIR RECIBO</button>
+        <button class="btn-imprimir" onclick="imprimirRecibo()">🧾 IMPRIMIR PRE-CUENTA (sin abrir cajón)</button>
       </div>
     </div>
   </div>
@@ -384,11 +387,119 @@ let totalCobradoHoy=0;
 let mesasHoy=0;
 let primeraVez=true;
 
+// ─── QZ TRAY (impresora GHIA GTP58 + cajón) ──────────────
+let qzListo=false;                 // true cuando QZ Tray está conectado
+let impresoraGHIA=null;            // nombre de la impresora en Windows (localStorage)
+
 function toArr(v){
   if(!v) return [];
   if(Array.isArray(v)) return v;
   if(typeof v==='object') return Object.values(v);
   return [];
+}
+
+// Intenta conectar con QZ Tray. Si no está instalado, el sistema sigue
+// funcionando con la impresión normal del navegador (window.print()).
+async function initQZ(){
+  if(typeof qz==='undefined'){ qzListo=false; return; }
+  try{
+    // Firmas nulas: modo gratuito (QZ mostrará su aviso de confirmación).
+    qz.security.setCertificatePromise(function(resolve){ resolve(); });
+    qz.security.setSignaturePromise(function(){ return function(resolve){ resolve(); }; });
+    if(!qz.websocket.isActive()){
+      await qz.websocket.connect();
+    }
+    qzListo=true;
+    impresoraGHIA=localStorage.getItem('impresoraCaja')||null;
+    // Si no hay impresora guardada, intenta usar la predeterminada del sistema.
+    if(!impresoraGHIA){
+      try{
+        impresoraGHIA=await qz.printers.getDefault();
+        if(impresoraGHIA) localStorage.setItem('impresoraCaja',impresoraGHIA);
+      }catch(e){ /* sin impresora predeterminada */ }
+    }
+  }catch(e){
+    qzListo=false;
+    console.log('QZ Tray no disponible, se usará impresión del navegador.');
+  }
+}
+
+// Permite configurar/cambiar la impresora manualmente.
+window.configurarImpresora=async function(){
+  if(!qzListo){ alert('QZ Tray no está conectado. Verifica que esté instalado y en ejecución.'); return; }
+  try{
+    var lista=await qz.printers.find();
+    var actual=impresoraGHIA||'';
+    var msg='Impresoras detectadas:\n\n'+lista.map(function(p,i){return (i+1)+'. '+p;}).join('\n')+'\n\nEscribe el nombre EXACTO de la impresora GHIA:';
+    var nombre=prompt(msg,actual);
+    if(nombre && nombre.trim()){
+      impresoraGHIA=nombre.trim();
+      localStorage.setItem('impresoraCaja',impresoraGHIA);
+      alert('Impresora guardada: '+impresoraGHIA);
+    }
+  }catch(e){ alert('No se pudieron listar las impresoras: '+e); }
+}
+
+// Genera las líneas de texto del ticket para papel de 58mm (32 caracteres de ancho).
+function construirTicketTexto(c){
+  var items=toArr(c.items);
+  var W=32; // caracteres por línea a 58mm, fuente normal
+  function linea(izq,der){
+    izq=String(izq); der=String(der);
+    var espacio=W-izq.length-der.length;
+    if(espacio<1){ izq=izq.slice(0,W-der.length-1); espacio=1; }
+    return izq+' '.repeat(espacio)+der+'\n';
+  }
+  function centro(txt){
+    txt=String(txt);
+    if(txt.length>=W) return txt.slice(0,W)+'\n';
+    var pad=Math.floor((W-txt.length)/2);
+    return ' '.repeat(pad)+txt+'\n';
+  }
+  var t='';
+  t+=centro('QUINTA AURE');
+  t+=centro('Sistema de Punto de Venta');
+  t+='\n';
+  t+=centro('MESA '+c.mesa);
+  t+=formatDate(c.timestamp)+' '+formatTime(c.timestamp)+'\n';
+  t+='Folio: '+String(cuentaSeleccionada||'').slice(-8).toUpperCase()+'\n';
+  t+='-'.repeat(W)+'\n';
+  items.forEach(function(i){
+    var nombre=(i.nombre||'Producto');
+    var qty=i.qty||1;
+    var importe='$'+((i.precio||0)*qty);
+    t+=linea(nombre+' x'+qty, importe);
+  });
+  t+='-'.repeat(W)+'\n';
+  t+=linea('Subtotal','$'+(c.subtotal||0));
+  if(c.propina){ t+=linea('Propina','$'+c.propina); }
+  t+=linea('TOTAL','$'+(c.total||0));
+  t+='\n';
+  t+=centro('¡Gracias por su visita!');
+  t+='\n\n\n';
+  return t;
+}
+
+// Imprime el ticket vía QZ Tray. Si abrirCajon=true, agrega el comando ESC p.
+async function imprimirTicketQZ(c, abrirCajon){
+  if(!qzListo || !impresoraGHIA) return false;
+  try{
+    var cfg=qz.configs.create(impresoraGHIA);
+    var data=[];
+    // Inicializar impresora
+    data.push('\x1B\x40');              // ESC @  (reset)
+    data.push(construirTicketTexto(c)); // contenido del ticket
+    data.push('\x1D\x56\x00');          // GS V 0 (corte de papel)
+    if(abrirCajon){
+      // ESC p m t1 t2 → abre el cajón conectado por RJ11
+      data.push('\x1B\x70\x00\x19\xFA');
+    }
+    await qz.print(cfg,[{type:'raw',format:'command',flavor:'plain',data:data.join('')}]);
+    return true;
+  }catch(e){
+    console.log('Error al imprimir por QZ:',e);
+    return false;
+  }
 }
 
 window.guardarConfig=function(){
@@ -410,6 +521,7 @@ function initFirebase(){
   });
   escucharCuentas();
   cargarResumenDiario();
+  initQZ(); // conectar con QZ Tray (impresora GHIA + cajón)
 }
 
 function escucharCuentas(){
@@ -556,6 +668,21 @@ window.cobrar=async function(){
   if(!cuentaSeleccionada||!pagoMetodo) return;
   var c=cuentas[cuentaSeleccionada];
   if(!c||c.estado==='cobrada') return;
+  // Validar monto recibido cuando el pago es en efectivo
+  if(pagoMetodo==='efectivo'){
+    var total=c.total||0;
+    var recibido=parseFloat(document.getElementById('montoRecibido').value)||0;
+    if(recibido<total){
+      var inp=document.getElementById('montoRecibido');
+      inp.style.borderColor='var(--accent2)';
+      inp.focus();
+      var cd=document.getElementById('cambioDisplay');
+      cd.style.display='block';
+      cd.innerHTML='<span style="color:var(--accent2);font-size:14px">⚠ El monto recibido es menor al total ($'+total+')</span>';
+      setTimeout(function(){inp.style.borderColor='';},1500);
+      return;
+    }
+  }
   try{
     await update(ref(db,'caja/'+cuentaSeleccionada),{estado:'cobrada',metodoPago:pagoMetodo,cobradaEn:Date.now()});
   }catch(e){return;}
@@ -572,11 +699,10 @@ window.cobrar=async function(){
       await remove(ref(db,'bebidas/'+c.ordenId)).catch(function(){});
     }
   }catch(e){}
-  totalCobradoHoy+=(c.total||0);
-  mesasHoy++;
-  actualizarResumen();
-  // Abrir caja registradora al cobrar
-  abrirCajaRegistradora();
+  // El total del día lo recalcula el listener de cargarResumenDiario() desde Firebase.
+  // No sumamos manualmente aquí para evitar doble conteo.
+  // El cajón se abre al imprimir el ticket desde el modal (imprimirYCerrar),
+  // usando el comando ESC/POS vía QZ Tray. La pre-cuenta NO abre el cajón.
   // Mostrar modal de confirmación para imprimir ticket
   document.getElementById('modalImprimirTicket').classList.add('open');
 }
@@ -601,33 +727,26 @@ function actualizarResumen(){
   document.getElementById('countHoy').textContent=mesasHoy;
 }
 
-window.imprimirRecibo=function(){window.print();}
+// PRE-CUENTA: imprime el ticket para que el cliente vea el total.
+// NO abre el cajón. Usa QZ Tray; si no está, cae a impresión del navegador.
+window.imprimirRecibo=async function(){
+  var c=cuentas[cuentaSeleccionada];
+  if(!c) return;
+  var ok=await imprimirTicketQZ(c,false);
+  if(!ok) window.print();
+}
 
-window.imprimirYCerrar=function(){
+// Al confirmar el cobro en el modal: imprime el ticket Y abre el cajón.
+window.imprimirYCerrar=async function(){
   cerrarModal('modalImprimirTicket');
-  setTimeout(function(){window.print();},200);
+  var c=cuentas[cuentaSeleccionada];
+  var ok=false;
+  if(c) ok=await imprimirTicketQZ(c,true); // true = abrir cajón
+  if(!ok) setTimeout(function(){window.print();},200);
 }
 
 window.noImprimirCaja=function(){
   cerrarModal('modalImprimirTicket');
-}
-
-function abrirCajaRegistradora(){
-  // Enviar comando ESC/POS para abrir cajón de caja registradora
-  // Comando estándar: ESC p 0 25 250
-  try{
-    var iframe=document.createElement('iframe');
-    iframe.style.display='none';
-    document.body.appendChild(iframe);
-    var doc=iframe.contentDocument||iframe.contentWindow.document;
-    doc.open();
-    doc.write('<html><body><pre style="font-size:0">\x1Bp\x00\x19\xFA</pre></body></html>');
-    doc.close();
-    iframe.contentWindow.print();
-    setTimeout(function(){document.body.removeChild(iframe);},1000);
-  }catch(e){
-    console.log('Caja registradora: se abrirá con la impresión del ticket');
-  }
 }
 
 function formatTime(ts){
@@ -652,37 +771,40 @@ window.cerrarModal=function(id){
 window.abrirCorte=function(){
   var hoy=new Date();
   var hoyStr=hoy.toDateString();
-  var cobradas=Object.values(cuentas).filter(function(c){
-    return c.estado==='cobrada' && new Date(c.cobradaEn||c.timestamp).toDateString()===hoyStr;
+  // Usa caja + historial para incluir cuentas que se limpiaron durante el día
+  obtenerTodoHistorial(function(todas){
+    var cobradas=Object.values(todas).filter(function(c){
+      return c.estado==='cobrada' && new Date(c.cobradaEn||c.timestamp).toDateString()===hoyStr;
+    });
+
+    var totalEfectivo=0,totalTarjeta=0,totalTransfer=0,totalPropinas=0,totalGeneral=0;
+    cobradas.forEach(function(c){
+      var t=c.total||0;
+      totalGeneral+=t;
+      totalPropinas+=(c.propina||0);
+      if(c.metodoPago==='efectivo') totalEfectivo+=t;
+      else if(c.metodoPago==='tarjeta') totalTarjeta+=t;
+      else if(c.metodoPago==='transferencia') totalTransfer+=t;
+    });
+
+    document.getElementById('corteFecha').textContent=hoy.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+    var html='';
+    html+='<div class="modal-section">RESUMEN DEL DÍA</div>';
+    html+='<div class="modal-row"><span class="modal-row-label">Cuentas cobradas</span><span class="modal-row-val">'+cobradas.length+'</span></div>';
+    html+='<div class="modal-row"><span class="modal-row-label">Propinas incluidas</span><span class="modal-row-val">$'+totalPropinas+'</span></div>';
+    html+='<div class="modal-section">DESGLOSE POR MÉTODO</div>';
+    html+='<div class="modal-row"><span class="modal-row-label">💵 Efectivo</span><span class="modal-row-val">$'+totalEfectivo+'</span></div>';
+    html+='<div class="modal-row"><span class="modal-row-label">💳 Tarjeta</span><span class="modal-row-val">$'+totalTarjeta+'</span></div>';
+    html+='<div class="modal-row"><span class="modal-row-label">📱 Transferencia</span><span class="modal-row-val">$'+totalTransfer+'</span></div>';
+    html+='<div class="modal-total"><span>TOTAL DEL DÍA</span><span>$'+totalGeneral+'</span></div>';
+
+    document.getElementById('corteContenido').innerHTML=html;
+    document.getElementById('cortePass').value='';
+    document.getElementById('cortePassError').style.display='none';
+    document.getElementById('modalCorte').classList.add('open');
+    setTimeout(function(){document.getElementById('cortePass').focus();},100);
   });
-
-  var totalEfectivo=0,totalTarjeta=0,totalTransfer=0,totalPropinas=0,totalGeneral=0;
-  cobradas.forEach(function(c){
-    var t=c.total||0;
-    totalGeneral+=t;
-    totalPropinas+=(c.propina||0);
-    if(c.metodoPago==='efectivo') totalEfectivo+=t;
-    else if(c.metodoPago==='tarjeta') totalTarjeta+=t;
-    else if(c.metodoPago==='transferencia') totalTransfer+=t;
-  });
-
-  document.getElementById('corteFecha').textContent=hoy.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-
-  var html='';
-  html+='<div class="modal-section">RESUMEN DEL DÍA</div>';
-  html+='<div class="modal-row"><span class="modal-row-label">Cuentas cobradas</span><span class="modal-row-val">'+cobradas.length+'</span></div>';
-  html+='<div class="modal-row"><span class="modal-row-label">Propinas incluidas</span><span class="modal-row-val">$'+totalPropinas+'</span></div>';
-  html+='<div class="modal-section">DESGLOSE POR MÉTODO</div>';
-  html+='<div class="modal-row"><span class="modal-row-label">💵 Efectivo</span><span class="modal-row-val">$'+totalEfectivo+'</span></div>';
-  html+='<div class="modal-row"><span class="modal-row-label">💳 Tarjeta</span><span class="modal-row-val">$'+totalTarjeta+'</span></div>';
-  html+='<div class="modal-row"><span class="modal-row-label">📱 Transferencia</span><span class="modal-row-val">$'+totalTransfer+'</span></div>';
-  html+='<div class="modal-total"><span>TOTAL DEL DÍA</span><span>$'+totalGeneral+'</span></div>';
-
-  document.getElementById('corteContenido').innerHTML=html;
-  document.getElementById('cortePass').value='';
-  document.getElementById('cortePassError').style.display='none';
-  document.getElementById('modalCorte').classList.add('open');
-  setTimeout(function(){document.getElementById('cortePass').focus();},100);
 }
 
 window.ejecutarCorte=function(){
@@ -697,48 +819,51 @@ window.ejecutarCorte=function(){
 
   var hoy=new Date();
   var hoyStr=hoy.toDateString();
-  var cobradas=Object.values(cuentas).filter(function(c){
-    return c.estado==='cobrada' && new Date(c.cobradaEn||c.timestamp).toDateString()===hoyStr;
-  }).sort(function(a,b){return a.timestamp-b.timestamp;});
+  // Usa caja + historial para incluir cuentas que se limpiaron durante el día
+  obtenerTodoHistorial(function(todas){
+    var cobradas=Object.values(todas).filter(function(c){
+      return c.estado==='cobrada' && new Date(c.cobradaEn||c.timestamp).toDateString()===hoyStr;
+    }).sort(function(a,b){return (a.cobradaEn||a.timestamp)-(b.cobradaEn||b.timestamp);});
 
-  var totalEfectivo=0,totalTarjeta=0,totalTransfer=0,totalPropinas=0,totalGeneral=0;
-  cobradas.forEach(function(c){
-    var t=c.total||0;
-    totalGeneral+=t;
-    totalPropinas+=(c.propina||0);
-    if(c.metodoPago==='efectivo') totalEfectivo+=t;
-    else if(c.metodoPago==='tarjeta') totalTarjeta+=t;
-    else if(c.metodoPago==='transferencia') totalTransfer+=t;
+    var totalEfectivo=0,totalTarjeta=0,totalTransfer=0,totalPropinas=0,totalGeneral=0;
+    cobradas.forEach(function(c){
+      var t=c.total||0;
+      totalGeneral+=t;
+      totalPropinas+=(c.propina||0);
+      if(c.metodoPago==='efectivo') totalEfectivo+=t;
+      else if(c.metodoPago==='tarjeta') totalTarjeta+=t;
+      else if(c.metodoPago==='transferencia') totalTransfer+=t;
+    });
+
+    var texto='CORTE DE CAJA — QUINTA AURE\n';
+    texto+=hoy.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'\n';
+    texto+='='.repeat(45)+'\n\n';
+    texto+='RESUMEN\n';
+    texto+='-'.repeat(30)+'\n';
+    texto+='Cuentas cobradas: '+cobradas.length+'\n';
+    texto+='Propinas: $'+totalPropinas+'\n\n';
+    texto+='DESGLOSE POR MÉTODO\n';
+    texto+='-'.repeat(30)+'\n';
+    texto+='Efectivo:      $'+totalEfectivo+'\n';
+    texto+='Tarjeta:       $'+totalTarjeta+'\n';
+    texto+='Transferencia: $'+totalTransfer+'\n\n';
+    texto+='TOTAL DEL DÍA: $'+totalGeneral+'\n';
+    texto+='='.repeat(45)+'\n\n';
+    texto+='DETALLE DE CUENTAS\n';
+    texto+='-'.repeat(30)+'\n';
+    cobradas.forEach(function(c,idx){
+      texto+=(idx+1)+'. Mesa '+c.mesa+' | '+(c.mesero||'-')+' | $'+(c.total||0)+' | '+(c.metodoPago||'-')+' | '+formatTime(c.cobradaEn||c.timestamp)+'\n';
+    });
+
+    var blob=new Blob([texto],{type:'text/plain;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;
+    a.download='corte_caja_'+hoy.toISOString().slice(0,10)+'.txt';
+    a.click();
+    URL.revokeObjectURL(url);
+    cerrarModal('modalCorte');
   });
-
-  var texto='CORTE DE CAJA — QUINTA AURE\n';
-  texto+=hoy.toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'\n';
-  texto+='='.repeat(45)+'\n\n';
-  texto+='RESUMEN\n';
-  texto+='-'.repeat(30)+'\n';
-  texto+='Cuentas cobradas: '+cobradas.length+'\n';
-  texto+='Propinas: $'+totalPropinas+'\n\n';
-  texto+='DESGLOSE POR MÉTODO\n';
-  texto+='-'.repeat(30)+'\n';
-  texto+='Efectivo:      $'+totalEfectivo+'\n';
-  texto+='Tarjeta:       $'+totalTarjeta+'\n';
-  texto+='Transferencia: $'+totalTransfer+'\n\n';
-  texto+='TOTAL DEL DÍA: $'+totalGeneral+'\n';
-  texto+='='.repeat(45)+'\n\n';
-  texto+='DETALLE DE CUENTAS\n';
-  texto+='-'.repeat(30)+'\n';
-  cobradas.forEach(function(c,idx){
-    texto+=(idx+1)+'. Mesa '+c.mesa+' | '+(c.mesero||'-')+' | $'+(c.total||0)+' | '+(c.metodoPago||'-')+' | '+formatTime(c.cobradaEn||c.timestamp)+'\n';
-  });
-
-  var blob=new Blob([texto],{type:'text/plain;charset=utf-8'});
-  var url=URL.createObjectURL(blob);
-  var a=document.createElement('a');
-  a.href=url;
-  a.download='corte_caja_'+hoy.toISOString().slice(0,10)+'.txt';
-  a.click();
-  URL.revokeObjectURL(url);
-  cerrarModal('modalCorte');
 }
 
 // ─── LIMPIAR HISTORIAL (solo pantalla) ───────────────────
@@ -943,10 +1068,22 @@ window.abrirLiberarMesas=function(){
         }
       });
 
-      renderLiberarMesas(mesasOcupadas);
-      document.getElementById('liberarPass').value='';
-      document.getElementById('liberarPassError').style.display='none';
-      document.getElementById('modalLiberarMesas').classList.add('open');
+      // Nodo 'otros': productos General que no van a cocina ni bebidas
+      onValue(ref(db,'otros'),function(snapO){
+        snapO.forEach(function(ch){
+          var o=ch.val();
+          if(o && o.estado!=='cobrada' && o.estado!=='cuenta-enviada'){
+            var mesa=o.mesa;
+            if(!mesasOcupadas[mesa]) mesasOcupadas[mesa]={ordenes:[],mesa:mesa};
+            mesasOcupadas[mesa].ordenes.push({key:ch.key,src:'otros',mesero:o.mesero||'-',items:toArr(o.items).length,timestamp:o.timestamp});
+          }
+        });
+
+        renderLiberarMesas(mesasOcupadas);
+        document.getElementById('liberarPass').value='';
+        document.getElementById('liberarPassError').style.display='none';
+        document.getElementById('modalLiberarMesas').classList.add('open');
+      },{onlyOnce:true});
     },{onlyOnce:true});
   },{onlyOnce:true});
 }

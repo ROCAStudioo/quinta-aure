@@ -315,7 +315,7 @@ import { getDatabase, ref, push, set, remove, onValue } from 'https://cdn.jsdeli
 
 let db=null, meseroNombre='', mesaSeleccionada=null, itemsOrden={}, mesasOcupadas={}, misOrdenes={};
 let catActiva='Todos', busqueda='', manualCounter=1000;
-let _unsubOrdenes=null, _unsubBebidas=null, _unsubMesas=null;
+let _unsubOrdenes=null, _unsubBebidas=null, _unsubMesas=null, _unsubOtros=null;
 
 function toArr(v) { if (!v) return []; if (Array.isArray(v)) return v; if (typeof v === 'object') return Object.values(v); return []; }
 
@@ -331,6 +331,7 @@ window.cerrarSesion=function(){
   localStorage.removeItem('meseroNombre');
   if(_unsubOrdenes){_unsubOrdenes();_unsubOrdenes=null;}
   if(_unsubBebidas){_unsubBebidas();_unsubBebidas=null;}
+  if(_unsubOtros){_unsubOtros();_unsubOtros=null;}
   if(_unsubMesas){_unsubMesas();_unsubMesas=null;}
   db=null; meseroNombre='';
   document.getElementById('meseroNombre').textContent='';
@@ -642,11 +643,27 @@ function renderMesas(){
 function escucharMesas(){
   if(!db)return;
   if(_unsubMesas) _unsubMesas();
-  _unsubMesas=onValue(ref(db,'ordenes'),snap=>{
+  // Una mesa se considera ocupada si tiene órdenes en cualquiera de los
+  // tres nodos: cocina (ordenes), bebidas u otros (productos General).
+  const ocup={ordenes:{},bebidas:{},otros:{}};
+  function recomputar(){
     mesasOcupadas={};
-    snap.forEach(ch=>{const o=ch.val();if(o && o.estado!=='cobrada'&&o.estado!=='cuenta-enviada')mesasOcupadas[o.mesa]=true;});
+    ['ordenes','bebidas','otros'].forEach(function(nodo){
+      Object.keys(ocup[nodo]).forEach(function(m){mesasOcupadas[m]=true;});
+    });
     renderMesas();
-  });
+  }
+  function escuchaNodo(nodo){
+    return onValue(ref(db,nodo),snap=>{
+      ocup[nodo]={};
+      snap.forEach(ch=>{const o=ch.val();if(o && o.estado!=='cobrada'&&o.estado!=='cuenta-enviada')ocup[nodo][o.mesa]=true;});
+      recomputar();
+    });
+  }
+  const u1=escuchaNodo('ordenes');
+  const u2=escuchaNodo('bebidas');
+  const u3=escuchaNodo('otros');
+  _unsubMesas=function(){u1();u2();u3();};
 }
 
 function renderOrdenActual(){
@@ -686,6 +703,17 @@ function escucharOrdenes(){
       const o=ch.val();
       if(o.mesero===meseroNombre && o.estado!=='cobrada' && o.estado!=='cuenta-enviada'){
         o._src='bebidas';o.items=toArr(o.items);misOrdenes[ch.key]=o;
+      }
+    });
+    renderMisOrdenes();actualizarBadge();
+  });
+  // Nodo 'otros': productos "General" que no se preparan (no van a cocina ni bebidas)
+  _unsubOtros=onValue(ref(db,'otros'),snap=>{
+    Object.keys(misOrdenes).forEach(k=>{if(misOrdenes[k]._src==='otros')delete misOrdenes[k];});
+    snap.forEach(ch=>{
+      const o=ch.val();
+      if(o.mesero===meseroNombre && o.estado!=='cobrada' && o.estado!=='cuenta-enviada'){
+        o._src='otros';o.items=toArr(o.items);misOrdenes[ch.key]=o;
       }
     });
     renderMisOrdenes();actualizarBadge();
@@ -798,7 +826,9 @@ window.confirmarEnvio=async function(){
       await set(bRef,{id:bRef.key,mesa:mesaSeleccionada,mesero:meseroNombre,nota:nota||'',items:bebidas.map(limpiarItem),estado:'pendiente',timestamp:Date.now()});
     }
     if(generales.length>0){
-      const gRef=push(ref(db,'ordenes'));
+      // Los productos "General" no se preparan: van al nodo 'otros'
+      // (ni cocina ni bebidas lo leen), pero el mesero y caja sí lo usan.
+      const gRef=push(ref(db,'otros'));
       await set(gRef,{id:gRef.key,mesa:mesaSeleccionada,mesero:meseroNombre,nota:nota||'',items:generales.map(limpiarItem),estado:'pendiente',timestamp:Date.now(),esGeneral:true});
     }
     showToast('Orden mesa '+mesaSeleccionada+' enviada','success');
