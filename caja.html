@@ -511,8 +511,10 @@ function construirTrabajoTicket(c, abrirCajon, conLogo){
   var data=['\x1B\x40']; // ESC @ (reset)
   if(conLogo){
     data.push('\x1B\x61\x01'); // ESC a 1 (centrar)
+    // A 203 DPI (impresora de 58mm): 1 cm ≈ 80 puntos.
+    // width:80 → el logo mide ~1 cm de ancho. Alto proporcional automático.
     data.push({ type:'raw', format:'image', flavor:'file', data:LOGO_TICKET,
-                options:{ language:'escpos', dotDensity:'double' } });
+                options:{ language:'escpos', dotDensity:'single', scale:false, size:{ width:80, height:0 } } });
     data.push('\x1B\x61\x00'); // ESC a 0 (alinear izquierda)
   }
   data.push(construirTicketTexto(c)); // contenido del ticket
